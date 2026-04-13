@@ -1,21 +1,24 @@
 # GitHub Actions Setup
 
-This repo can now validate the shared Swift package remotely with GitHub-hosted macOS runners.
+This repo now has two GitHub-hosted macOS workflows:
+
+- `Swift Package CI` for package build and tests
+- `iOS TestFlight` for signed iPhone archive/export/upload
 
 ## What this gives you
 
 - Remote `swift build`
 - Remote `swift test`
-- A clean macOS signal before the Xcode app exists
+- Signed iOS archive and TestFlight upload
+- A clean macOS signal without needing a local Mac for every build
 
-## What this does not give you yet
+## What this still does not give you yet
 
-- No signed `.ipa`
-- No TestFlight upload
-- No iOS or tvOS app archive yet
 - No interactive Xcode debugging
+- No completed tvOS release flow yet
+- No local Xcode editing environment
 
-Those come later, once a Mac creates the actual Xcode app targets and signing setup.
+The iPhone TestFlight upload path is now in place, but the product itself is still under active development.
 
 ## 1. Create a GitHub repository
 
@@ -32,7 +35,7 @@ git push -u origin main
 
 If this folder is already a git repository, skip `git init` and just add the remote if needed.
 
-## 2. Run the workflow
+## 2. Run the package workflow
 
 After the push:
 
@@ -41,11 +44,11 @@ After the push:
 3. Select `Swift Package CI`
 4. Confirm the macOS job completes successfully
 
-The workflow file is:
+The package workflow file is:
 
 - [.github/workflows/swift-package-ci.yml](/c:/Users/anand/Downloads/pypgms/iosapp/.github/workflows/swift-package-ci.yml)
 
-## 3. What the workflow currently runs
+## 3. What the package workflow runs
 
 On every push to `main` or `master`, on pull requests, and on manual dispatch:
 
@@ -53,24 +56,36 @@ On every push to `main` or `master`, on pull requests, and on manual dispatch:
 - `swift build`
 - `swift test`
 
-## 4. Next CI milestone after you have a Mac
+## 4. iPhone TestFlight workflow
 
-Once the Xcode project exists, the next pipeline upgrade should be:
+The release workflow file is:
 
-1. Add an app build job using `xcodebuild`
-2. Add signing material as GitHub secrets
-3. Archive the app on macOS runners
-4. Export an `.ipa`
-5. Upload to TestFlight
+- [.github/workflows/ios-testflight.yml](/c:/Users/anand/Downloads/pypgms/iosapp/.github/workflows/ios-testflight.yml)
 
-## Recommended future secrets
+This workflow uses:
 
-Do not add these yet because the project is not ready for signing, but this is the usual direction:
+- `project.yml`
+- `scripts/ci/install_signing_assets.sh`
+- `scripts/ci/write_export_options.sh`
 
+It depends on the repository secrets documented in [docs/testflight-setup.md](/c:/Users/anand/Downloads/pypgms/iosapp/docs/testflight-setup.md).
+
+## 5. Secrets currently required for iPhone release
+
+- `APPLE_TEAM_ID`
 - `BUILD_CERTIFICATE_BASE64`
 - `P12_PASSWORD`
 - `BUILD_PROVISION_PROFILE_BASE64`
 - `KEYCHAIN_PASSWORD`
-- `APP_STORE_CONNECT_ISSUER_ID`
 - `APP_STORE_CONNECT_KEY_ID`
+- `APP_STORE_CONNECT_ISSUER_ID`
 - `APP_STORE_CONNECT_PRIVATE_KEY`
+
+## 6. Next CI milestone after this
+The next pipeline upgrades should be:
+
+1. Add a tvOS archive/upload workflow
+2. Add release tagging and build-number strategy
+3. Add artifact retention for generated `.ipa` files if needed
+4. Add automated smoke checks for the app target
+5. Add App Store metadata/screenshot automation later if desired

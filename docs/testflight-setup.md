@@ -1,14 +1,31 @@
 # TestFlight Delivery
 
-This repo now includes a minimal iPhone app scaffold and a manual GitHub Actions workflow for TestFlight uploads.
+This repo now includes a minimal iPhone app scaffold and a working GitHub Actions workflow for TestFlight uploads.
+
+## Current release identifiers
+
+- App name: `1xtream-m3u`
+- iOS bundle identifier: `com.bl.1xtream-m3u`
+- Apple Team ID: `QAXZVV2HVR`
+- Xcode scheme: `OneXtreamM3U`
+- Project file generated in CI: `OneXtreamM3U.xcodeproj`
+- Upload workflow: `.github/workflows/ios-testflight.yml`
 
 ## What is in place
 
 - A minimal SwiftUI iOS app generated with `XcodeGen`
+- Real source onboarding for:
+  - `M3U URL`
+  - raw `M3U` text paste
+  - `Xtream` host, username, and password
+- Live channel browsing by loaded groups
 - Signing hooks for GitHub-hosted macOS runners
 - Manual TestFlight workflow at `.github/workflows/ios-testflight.yml`
+- Successful archive, export, and TestFlight upload from GitHub Actions
 
-## Required GitHub secrets
+## GitHub repository secrets actually used
+
+These are the exact secret names used by the TestFlight workflow:
 
 - `APPLE_TEAM_ID`
 - `BUILD_CERTIFICATE_BASE64`
@@ -19,6 +36,58 @@ This repo now includes a minimal iPhone app scaffold and a manual GitHub Actions
 - `APP_STORE_CONNECT_ISSUER_ID`
 - `APP_STORE_CONNECT_PRIVATE_KEY`
 
+## What each secret contains
+
+- `APPLE_TEAM_ID`
+  - Apple Developer Team ID
+  - Current value used for this app: `QAXZVV2HVR`
+- `BUILD_CERTIFICATE_BASE64`
+  - Base64-encoded contents of the exported Apple Distribution `.p12` certificate
+- `P12_PASSWORD`
+  - Password used when exporting the `.p12` certificate
+- `BUILD_PROVISION_PROFILE_BASE64`
+  - Base64-encoded contents of the iOS App Store Connect `.mobileprovision` profile
+- `KEYCHAIN_PASSWORD`
+  - Temporary password used by CI when creating its ephemeral macOS keychain
+- `APP_STORE_CONNECT_KEY_ID`
+  - App Store Connect API key ID
+- `APP_STORE_CONNECT_ISSUER_ID`
+  - App Store Connect API issuer ID
+- `APP_STORE_CONNECT_PRIVATE_KEY`
+  - Full text contents of the App Store Connect `.p8` private key
+
+## Manual Apple-side artifacts that were created
+
+These are not stored in git and should remain local or in GitHub Secrets only:
+
+- Apple Distribution certificate export: `.p12`
+- Distribution certificate file: `.cer`
+- Certificate signing request: `.csr`
+- App Store Connect provisioning profile: `.mobileprovision`
+- App Store Connect API key: `.p8`
+
+## Local sensitive files currently ignored by git
+
+The repo `.gitignore` intentionally blocks these patterns:
+
+- `*.p12`
+- `*.cer`
+- `*.csr`
+- `*.mobileprovision`
+- `*.p8`
+- `private.key`
+
+## Workflow variables and values currently hard-coded in CI
+
+These values are referenced by the iOS upload workflow:
+
+- `PRODUCT_BUNDLE_IDENTIFIER="com.bl.1xtream-m3u"`
+- `CODE_SIGN_IDENTITY="Apple Distribution"`
+- `scheme: OneXtreamM3U`
+- `archivePath: $RUNNER_TEMP/OneXtreamM3U.xcarchive`
+- export method: `app-store`
+- generated IPA filename: `1xtream-m3u.ipa`
+
 ## Triggering the workflow
 
 1. Open the GitHub repository
@@ -26,14 +95,27 @@ This repo now includes a minimal iPhone app scaffold and a manual GitHub Actions
 3. Choose `iOS TestFlight`
 4. Click `Run workflow`
 
+## What the workflow does
+
+1. Checks out the repo
+2. Selects the latest stable Xcode
+3. Installs `XcodeGen`
+4. Generates `OneXtreamM3U.xcodeproj` from `project.yml`
+5. Installs the signing certificate and provisioning profile from secrets
+6. Writes the App Store Connect API key to the runner
+7. Archives the app with distribution signing
+8. Exports the `.ipa`
+9. Uploads the build to TestFlight
+
 ## Important current limitation
 
-This is a first-pass delivery shell meant to prove the signing and upload pipeline.
+This is now an MVP-in-progress build with working onboarding and channel loading, while deeper playback and persistence work continue.
 
-The app currently shows sample playlist content from the shared package. It does not yet include:
+The app does not yet include:
 
-- provider onboarding
-- real M3U import
-- Xtream login
-- video playback
-- tvOS delivery
+- VLC playback
+- actual video player UI
+- favorites and recents persistence
+- Keychain credential storage
+- SwiftData-backed profile management
+- tvOS target delivery

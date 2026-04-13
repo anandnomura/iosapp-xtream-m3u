@@ -74,7 +74,7 @@ public struct M3UParser: Sendable {
                 artwork: artwork,
                 source: PlaybackSource(
                     url: streamURL,
-                    containerHint: streamURL.pathExtension.isEmpty ? nil : streamURL.pathExtension.lowercased()
+                    containerHint: containerHint(for: streamURL)
                 )
             )
             items.append(item)
@@ -125,6 +125,31 @@ public struct M3UParser: Sendable {
             .lowercased()
             .replacingOccurrences(of: "[^a-z0-9]+", with: "-", options: .regularExpression)
             .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+    }
+
+    private func containerHint(for url: URL) -> String? {
+        if !url.pathExtension.isEmpty {
+            return url.pathExtension.lowercased()
+        }
+
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return nil
+        }
+
+        let queryItems = components.queryItems ?? []
+        let queryBackedKeys = ["output", "container", "extension", "format", "type"]
+
+        for key in queryBackedKeys {
+            if let value = queryItems.first(where: { $0.name.caseInsensitiveCompare(key) == .orderedSame })?.value?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased(),
+               !value.isEmpty
+            {
+                return value
+            }
+        }
+
+        return nil
     }
 }
 

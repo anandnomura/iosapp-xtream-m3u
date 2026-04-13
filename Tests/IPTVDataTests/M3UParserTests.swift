@@ -32,4 +32,19 @@ final class M3UParserTests: XCTestCase {
             XCTAssertEqual(error as? M3UParserError, .missingHeader)
         }
     }
+
+    func testParserInfersContainerFromQueryString() throws {
+        let parser = M3UParser()
+        let providerID = UUID(uuidString: "11111111-2222-3333-4444-555555555555")!
+        let playlist = """
+        #EXTM3U
+        #EXTINF:-1 group-title="Live",Arena Sport
+        http://8kultradnscloud.ru/live/user/pass/12345?output=ts
+        """
+
+        let parsed = try parser.parse(text: playlist, providerID: providerID)
+
+        XCTAssertEqual(parsed.items.count, 1)
+        XCTAssertEqual(parsed.items[0].source?.containerHint, "ts")
+    }
 }

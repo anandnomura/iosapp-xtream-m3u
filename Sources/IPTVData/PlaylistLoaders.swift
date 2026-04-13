@@ -207,11 +207,15 @@ private extension KeyedDecodingContainer {
         }
 
         if let intValue = try? decodeIfPresent(Int.self, forKey: key) {
-            return intValue.map(String.init)
+            if let intValue {
+                return String(intValue)
+            }
         }
 
         if let doubleValue = try? decodeIfPresent(Double.self, forKey: key) {
-            return doubleValue.map { String(Int($0)) }
+            if let doubleValue {
+                return String(Int(doubleValue))
+            }
         }
 
         return nil

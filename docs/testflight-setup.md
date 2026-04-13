@@ -119,6 +119,7 @@ Apple says you can avoid answering the beta export compliance questions on every
 This repo now sets:
 
 - `ITSAppUsesNonExemptEncryption = false`
+- `NSAppTransportSecurity > NSAllowsArbitraryLoads = true`
 
 That should prevent the repeated `Missing Compliance` prompt for builds that do not use non-exempt encryption.
 

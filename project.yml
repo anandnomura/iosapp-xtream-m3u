@@ -28,7 +28,6 @@ targets:
         LSRequiresIPhoneOS: true
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
-          NSAllowsArbitraryLoadsForMedia: true
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
         UIApplicationSupportsIndirectInputEvents: true

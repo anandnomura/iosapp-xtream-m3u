@@ -47,11 +47,11 @@ public struct M3UParser: Sendable {
                 continue
             }
 
-            guard let pendingMetadata, let streamURL = URL(string: line) else {
+            guard let entry = pendingMetadata, let streamURL = URL(string: line) else {
                 continue
             }
 
-            let groupName = pendingMetadata.groupTitle ?? "Ungrouped"
+            let groupName = entry.groupTitle ?? "Ungrouped"
             let groupID = groupIdentifier(for: groupName)
 
             if groupsByName[groupName] == nil {
@@ -59,14 +59,14 @@ public struct M3UParser: Sendable {
                 order += 1
             }
 
-            let title = pendingMetadata.name.isEmpty ? (pendingMetadata.tvgName ?? "Untitled Channel") : pendingMetadata.name
+            let title = entry.name.isEmpty ? (entry.tvgName ?? "Untitled Channel") : entry.name
             let artwork = ArtworkSet(
-                posterURL: pendingMetadata.logo.flatMap(URL.init(string:)),
-                thumbnailURL: pendingMetadata.logo.flatMap(URL.init(string:))
+                posterURL: entry.logo.flatMap(URL.init(string:)),
+                thumbnailURL: entry.logo.flatMap(URL.init(string:))
             )
 
             let item = MediaItem(
-                id: pendingMetadata.tvgID ?? streamURL.absoluteString,
+                id: entry.tvgID ?? streamURL.absoluteString,
                 providerID: providerID,
                 groupID: groupID,
                 kind: .live,

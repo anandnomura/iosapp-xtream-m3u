@@ -525,6 +525,7 @@ private struct ChannelDetailView: View {
                 moveChannel(by: -1)
             } onNextChannel: {
                 moveChannel(by: 1)
+            }
             )
         }
     }

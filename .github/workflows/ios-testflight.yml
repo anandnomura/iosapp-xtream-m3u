@@ -8,6 +8,10 @@ jobs:
     name: Archive And Upload
     runs-on: macos-15
     timeout-minutes: 45
+    env:
+      ARCHIVE_PATH: ${{ runner.temp }}/OneXtreamM3U.xcarchive
+      EXPORT_PATH: ${{ runner.temp }}/export
+      LOG_PATH: ${{ runner.temp }}/logs
 
     steps:
       - name: Check out repository
@@ -23,6 +27,10 @@ jobs:
 
       - name: Generate Xcode project
         run: xcodegen generate
+
+      - name: Prepare diagnostics folders
+        run: |
+          mkdir -p "$LOG_PATH" "$EXPORT_PATH"
 
       - name: Install signing assets
         env:
@@ -44,12 +52,13 @@ jobs:
         env:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
+          set -o pipefail
           xcodebuild \
             -project OneXtreamM3U.xcodeproj \
             -scheme OneXtreamM3U \
             -configuration Release \
             -destination "generic/platform=iOS" \
-            -archivePath "$RUNNER_TEMP/OneXtreamM3U.xcarchive" \
+            -archivePath "$ARCHIVE_PATH" \
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
             PRODUCT_BUNDLE_IDENTIFIER="com.bl.1xtream-m3u" \
             CURRENT_PROJECT_VERSION="${GITHUB_RUN_NUMBER}" \
@@ -57,7 +66,18 @@ jobs:
             CODE_SIGN_IDENTITY="Apple Distribution" \
             PROVISIONING_PROFILE_SPECIFIER="$CI_PROFILE_NAME" \
             OTHER_CODE_SIGN_FLAGS="--keychain $CI_KEYCHAIN_PATH" \
-            archive
+            archive | tee "$LOG_PATH/archive.log"
+
+      - name: Capture archive metadata
+        run: |
+          APP_INFO_PLIST="$ARCHIVE_PATH/Products/Applications/1xtream-m3u.app/Info.plist"
+          APP_STORE_INFO_PLIST="$ARCHIVE_PATH/Info.plist"
+
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP_INFO_PLIST" | tee "$LOG_PATH/bundle_id.txt"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP_INFO_PLIST" | tee "$LOG_PATH/version.txt"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$APP_INFO_PLIST" | tee "$LOG_PATH/build_number.txt"
+          cp "$APP_INFO_PLIST" "$LOG_PATH/App-Info.plist"
+          cp "$APP_STORE_INFO_PLIST" "$LOG_PATH/Archive-Info.plist"
 
       - name: Create export options
         env:
@@ -66,20 +86,50 @@ jobs:
 
       - name: Export IPA
         run: |
+          set -o pipefail
           xcodebuild \
             -exportArchive \
-            -archivePath "$RUNNER_TEMP/OneXtreamM3U.xcarchive" \
-            -exportPath "$RUNNER_TEMP/export" \
-            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist"
+            -archivePath "$ARCHIVE_PATH" \
+            -exportPath "$EXPORT_PATH" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" | tee "$LOG_PATH/export.log"
+
+      - name: Capture export metadata
+        run: |
+          cp "$RUNNER_TEMP/ExportOptions.plist" "$LOG_PATH/ExportOptions.plist"
+          if [[ -f "$EXPORT_PATH/DistributionSummary.plist" ]]; then
+            cp "$EXPORT_PATH/DistributionSummary.plist" "$LOG_PATH/DistributionSummary.plist"
+          fi
+          if [[ -f "$EXPORT_PATH/Packaging.log" ]]; then
+            cp "$EXPORT_PATH/Packaging.log" "$LOG_PATH/Packaging.log"
+          fi
+          ls -lah "$EXPORT_PATH" | tee "$LOG_PATH/export-directory.txt"
+          shasum -a 256 "$EXPORT_PATH/1xtream-m3u.ipa" | tee "$LOG_PATH/ipa-sha256.txt"
 
       - name: Upload to TestFlight
         env:
           APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
         run: |
-          xcrun altool \
-            --upload-app \
-            --type ios \
-            --file "$RUNNER_TEMP/export/1xtream-m3u.ipa" \
-            --apiKey "$APP_STORE_CONNECT_KEY_ID" \
-            --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID"
+          set -o pipefail
+          xcrun iTMSTransporter \
+            -m upload \
+            -assetFile "$EXPORT_PATH/1xtream-m3u.ipa" \
+            -apiKey "$APP_STORE_CONNECT_KEY_ID" \
+            -apiIssuer "$APP_STORE_CONNECT_ISSUER_ID" \
+            -v informational | tee "$LOG_PATH/transporter-upload.log"
+
+      - name: Upload IPA artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 1xtream-m3u-ipa-${{ github.run_number }}
+          path: ${{ env.EXPORT_PATH }}/1xtream-m3u.ipa
+          if-no-files-found: error
+
+      - name: Upload release diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 1xtream-m3u-diagnostics-${{ github.run_number }}
+          path: ${{ env.LOG_PATH }}
+          if-no-files-found: error

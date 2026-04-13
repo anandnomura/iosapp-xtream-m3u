@@ -21,7 +21,8 @@ This repo now includes a minimal iPhone app scaffold and a working GitHub Action
 - Live channel browsing by loaded groups
 - Signing hooks for GitHub-hosted macOS runners
 - Manual TestFlight workflow at `.github/workflows/ios-testflight.yml`
-- Successful archive, export, and TestFlight upload from GitHub Actions
+- Successful archive, export, and TestFlight upload command execution from GitHub Actions
+- Workflow artifact retention for the generated `.ipa` and release diagnostics
 
 ## GitHub repository secrets actually used
 
@@ -55,6 +56,7 @@ These are the exact secret names used by the TestFlight workflow:
   - App Store Connect API issuer ID
 - `APP_STORE_CONNECT_PRIVATE_KEY`
   - Full text contents of the App Store Connect `.p8` private key
+  - Store the raw multi-line private key text, not base64
 
 ## Manual Apple-side artifacts that were created
 
@@ -88,12 +90,37 @@ These values are referenced by the iOS upload workflow:
 - export method: `app-store`
 - generated IPA filename: `1xtream-m3u.ipa`
 
+## Workflow artifacts created on every run
+
+The workflow now preserves these artifacts even if the upload step fails:
+
+- `1xtream-m3u-ipa-<run_number>`
+  - contains the exported `1xtream-m3u.ipa`
+- `1xtream-m3u-diagnostics-<run_number>`
+  - contains:
+    - `archive.log`
+    - `export.log`
+    - `transporter-upload.log`
+    - `App-Info.plist`
+    - `Archive-Info.plist`
+    - `ExportOptions.plist`
+    - `DistributionSummary.plist`
+    - `Packaging.log`
+    - `bundle_id.txt`
+    - `version.txt`
+    - `build_number.txt`
+    - `ipa-sha256.txt`
+    - `export-directory.txt`
+
 ## Triggering the workflow
 
 1. Open the GitHub repository
 2. Open `Actions`
 3. Choose `iOS TestFlight`
 4. Click `Run workflow`
+5. After it finishes, open the run and download:
+   - the `.ipa` artifact if you want to upload manually from a Mac
+   - the diagnostics artifact if the build still does not appear in TestFlight
 
 ## What the workflow does
 
@@ -105,7 +132,8 @@ These values are referenced by the iOS upload workflow:
 6. Writes the App Store Connect API key to the runner
 7. Archives the app with distribution signing
 8. Exports the `.ipa`
-9. Uploads the build to TestFlight
+9. Uploads the build to TestFlight with `iTMSTransporter`
+10. Saves the `.ipa` and release diagnostics as downloadable workflow artifacts
 
 ## Important current limitation
 

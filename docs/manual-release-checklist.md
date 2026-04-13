@@ -68,5 +68,16 @@ These were created locally and must not be committed:
 
 1. Push app changes to `main`
 2. Run the `iOS TestFlight` workflow
-3. Wait for App Store Connect processing
-4. Assign the processed build to internal TestFlight testers
+3. Download the workflow artifacts:
+   - `1xtream-m3u-ipa-<run_number>`
+   - `1xtream-m3u-diagnostics-<run_number>`
+4. If the build does not appear in App Store Connect, inspect:
+   - `transporter-upload.log`
+   - `DistributionSummary.plist`
+   - `Packaging.log`
+   - `bundle_id.txt`
+   - `version.txt`
+   - `build_number.txt`
+5. If needed, copy the `.ipa` to a Mac and upload it manually with Apple Transporter
+6. Wait for App Store Connect processing
+7. Assign the processed build to internal TestFlight testers

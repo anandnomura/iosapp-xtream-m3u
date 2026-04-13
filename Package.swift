@@ -32,7 +32,8 @@ let package = Package(
         ),
         .testTarget(
             name: "IPTVDataTests",
-            dependencies: ["IPTVData", "IPTVDomain"]
+            dependencies: ["IPTVData", "IPTVDomain"],
+            exclude: ["README.md"]
         )
     ]
 )

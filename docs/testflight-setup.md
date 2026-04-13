@@ -107,6 +107,7 @@ For TestFlight uploads in CI:
 
 - `CFBundleShortVersionString` is currently stamped to `1.0`
 - `CFBundleVersion` is stamped from `GITHUB_RUN_NUMBER`
+- the stamping now happens on the archived app bundle before export/upload
 
 That means every workflow run should produce a higher build number automatically.
 

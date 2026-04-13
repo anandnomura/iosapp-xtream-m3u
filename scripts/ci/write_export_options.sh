@@ -1,0 +1,26 @@
+#!/bin/bash
+set -euo pipefail
+
+cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>method</key>
+  <string>app-store</string>
+  <key>signingStyle</key>
+  <string>manual</string>
+  <key>teamID</key>
+  <string>${APPLE_TEAM_ID}</string>
+  <key>provisioningProfiles</key>
+  <dict>
+    <key>com.bl.1xtream-m3u</key>
+    <string>${CI_PROFILE_NAME}</string>
+  </dict>
+  <key>stripSwiftSymbols</key>
+  <true/>
+  <key>uploadSymbols</key>
+  <true/>
+</dict>
+</plist>
+EOF

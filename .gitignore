@@ -15,6 +15,14 @@ DerivedData/
 *.dSYM
 *.dSYM.zip
 
+# Local signing material
+*.p12
+*.cer
+*.csr
+*.mobileprovision
+*.p8
+private.key
+
 # OS/editor noise
 .DS_Store
 Thumbs.db

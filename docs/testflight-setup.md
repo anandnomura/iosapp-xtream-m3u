@@ -112,6 +112,16 @@ For TestFlight uploads in CI:
 
 That means every workflow run should produce a higher build number automatically.
 
+## Export compliance automation
+
+Apple says you can avoid answering the beta export compliance questions on every build by declaring the app's encryption status in `Info.plist`.
+
+This repo now sets:
+
+- `ITSAppUsesNonExemptEncryption = false`
+
+That should prevent the repeated `Missing Compliance` prompt for builds that do not use non-exempt encryption.
+
 ## Workflow artifacts created on every run
 
 The workflow now preserves these artifacts even if the upload step fails:

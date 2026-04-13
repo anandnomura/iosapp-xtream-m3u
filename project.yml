@@ -24,6 +24,7 @@ targets:
       path: App/Info.plist
       properties:
         CFBundleDisplayName: 1xtream-m3u
+        ITSAppUsesNonExemptEncryption: false
         LSRequiresIPhoneOS: true
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true

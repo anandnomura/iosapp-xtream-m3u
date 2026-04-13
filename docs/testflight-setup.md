@@ -107,7 +107,7 @@ For TestFlight uploads in CI:
 
 - `CFBundleShortVersionString` is currently stamped to `1.0`
 - `CFBundleVersion` is derived from `GITHUB_RUN_NUMBER`
-- CI patches [project.yml](/c:/Users/anand/Downloads/pypgms/iosapp/project.yml) before `xcodegen generate` so the generated Xcode project carries the correct build number through archive and export
+- CI patches the generated `OneXtreamM3U.xcodeproj/project.pbxproj` after `xcodegen generate` so the Xcode archive/export pipeline carries the correct build number through to the IPA
 
 That means every workflow run should produce a higher build number automatically.
 

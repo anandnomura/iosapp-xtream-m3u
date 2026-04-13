@@ -21,19 +21,20 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
-      - name: Prepare CI project settings
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Patch generated project build number
         run: |
           python - <<'PY'
           from pathlib import Path
+          import os
 
-          project = Path("project.yml")
-          text = project.read_text()
-          text = text.replace("CURRENT_PROJECT_VERSION: 1", f"CURRENT_PROJECT_VERSION: {__import__('os').environ['GITHUB_RUN_NUMBER']}")
-          project.write_text(text)
+          pbxproj = Path("OneXtreamM3U.xcodeproj/project.pbxproj")
+          text = pbxproj.read_text()
+          text = text.replace("CURRENT_PROJECT_VERSION = 1;", f"CURRENT_PROJECT_VERSION = {os.environ['GITHUB_RUN_NUMBER']};")
+          pbxproj.write_text(text)
           PY
-
-      - name: Generate Xcode project
-        run: xcodegen generate
 
       - name: Prepare diagnostics folders
         run: |

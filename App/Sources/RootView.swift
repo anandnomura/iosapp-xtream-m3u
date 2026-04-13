@@ -1,3 +1,4 @@
+import AVKit
 import SwiftUI
 import IPTVDomain
 
@@ -143,6 +144,7 @@ private struct ChannelListView: View {
 
 private struct ChannelDetailView: View {
     let item: MediaItem
+    @State private var player: AVPlayer?
 
     var body: some View {
         List {
@@ -153,6 +155,32 @@ private struct ChannelDetailView: View {
             }
 
             if let source = item.source {
+                Section("Preview Playback") {
+                    VideoPlayer(player: player)
+                        .frame(minHeight: 220)
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                        .overlay(alignment: .bottomLeading) {
+                            Text("AVPlayer MVP preview")
+                                .font(.caption2.weight(.semibold))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(.ultraThinMaterial, in: Capsule())
+                                .padding(12)
+                        }
+
+                    Button("Play Stream") {
+                        let nextPlayer = AVPlayer(url: source.url)
+                        nextPlayer.play()
+                        player = nextPlayer
+                    }
+
+                    Button("Stop Playback", role: .destructive) {
+                        player?.pause()
+                        player = nil
+                    }
+                    .disabled(player == nil)
+                }
+
                 Section("Playback Source") {
                     Text(source.url.absoluteString)
                         .textSelection(.enabled)
@@ -172,6 +200,10 @@ private struct ChannelDetailView: View {
             }
         }
         .navigationTitle(item.title)
+        .onDisappear {
+            player?.pause()
+            player = nil
+        }
     }
 }
 

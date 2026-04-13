@@ -103,6 +103,13 @@ This repo now enforces that by:
 - using plist placeholders like `$(CURRENT_PROJECT_VERSION)` and `$(MARKETING_VERSION)`
 - avoiding numeric injection of those keys from [project.yml](/c:/Users/anand/Downloads/pypgms/iosapp/project.yml)
 
+For TestFlight uploads in CI:
+
+- `CFBundleShortVersionString` is currently stamped to `1.0`
+- `CFBundleVersion` is stamped from `GITHUB_RUN_NUMBER`
+
+That means every workflow run should produce a higher build number automatically.
+
 ## Workflow artifacts created on every run
 
 The workflow now preserves these artifacts even if the upload step fails:

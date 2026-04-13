@@ -300,7 +300,9 @@ private struct ChannelDetailView: View {
 
                             HStack(spacing: 12) {
                                 Button {
-                                    playerController.play(url: source.url)
+                                    Task {
+                                        await playerController.play(source: source)
+                                    }
                                 } label: {
                                     playerButton("Play Stream", systemImage: "play.fill", fill: true)
                                 }
@@ -313,6 +315,12 @@ private struct ChannelDetailView: View {
                             }
 
                             StatCapsule(title: "Player", value: playerController.stateDescription)
+
+                            if let probeSummary = playerController.probeSummary {
+                                Text(probeSummary)
+                                    .font(.footnote)
+                                    .foregroundStyle(AppPalette.secondaryText)
+                            }
 
                             if let errorMessage = playerController.errorMessage {
                                 Text(errorMessage)

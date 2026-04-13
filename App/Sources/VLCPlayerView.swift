@@ -1,25 +1,47 @@
+import MobileVLCKit
 import SwiftUI
 import UIKit
-import MobileVLCKit
 
+@MainActor
 final class VLCPlayerController: NSObject, ObservableObject, VLCMediaPlayerDelegate {
     @Published var errorMessage: String?
     @Published var stateDescription = "Ready"
+    @Published var probeSummary: String?
 
     let mediaPlayer = VLCMediaPlayer()
+    private let session: URLSession
 
     override init() {
+        let configuration = URLSessionConfiguration.default
+        configuration.timeoutIntervalForRequest = 12
+        configuration.timeoutIntervalForResource = 12
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        self.session = URLSession(configuration: configuration)
         super.init()
         mediaPlayer.delegate = self
     }
 
-    func play(url: URL) {
+    func play(source: PlaybackSource) async {
         errorMessage = nil
+        probeSummary = nil
         stateDescription = "Opening stream..."
 
-        let media = VLCMedia(url: url)
+        do {
+            probeSummary = try await probe(url: source.url)
+        } catch {
+            stateDescription = "Network probe failed"
+            errorMessage = friendlyProbeMessage(for: error, url: source.url)
+            return
+        }
+
+        let media = VLCMedia(url: source.url)
         media.addOption(":network-caching=1000")
         media.addOption(":live-caching=1000")
+        media.addOption(":http-reconnect=true")
+        media.addOption(":http-user-agent=1xtream-m3u/1.0")
+        if let hint = source.containerHint?.lowercased(), hint == "ts" {
+            media.addOption(":demux=ts")
+        }
         mediaPlayer.media = media
         mediaPlayer.play()
     }
@@ -53,6 +75,47 @@ final class VLCPlayerController: NSObject, ObservableObject, VLCMediaPlayerDeleg
                 self.stateDescription = "Ready"
             }
         }
+    }
+
+    private func probe(url: URL) async throws -> String {
+        var request = URLRequest(url: url)
+        request.setValue("bytes=0-1023", forHTTPHeaderField: "Range")
+        request.setValue("1xtream-m3u/1.0", forHTTPHeaderField: "User-Agent")
+
+        let (bytes, response) = try await session.bytes(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            return "Loaded response"
+        }
+
+        guard 200..<400 ~= httpResponse.statusCode else {
+            throw URLError(.badServerResponse)
+        }
+
+        for try await _ in bytes.prefix(1) {
+            break
+        }
+
+        return "Stream reachable: HTTP \(httpResponse.statusCode)"
+    }
+
+    private func friendlyProbeMessage(for error: Error, url: URL) -> String {
+        let nsError = error as NSError
+        if nsError.domain == NSURLErrorDomain {
+            switch nsError.code {
+            case NSURLErrorCannotFindHost:
+                return "The stream host could not be found for \(url.host ?? url.absoluteString)."
+            case NSURLErrorCannotConnectToHost:
+                return "The app reached the host name, but could not connect to the stream server."
+            case NSURLErrorTimedOut:
+                return "The stream server timed out before sending playable data."
+            case NSURLErrorAppTransportSecurityRequiresSecureConnection:
+                return "ATS is still blocking this exact playback host: \(url.absoluteString)"
+            default:
+                return error.localizedDescription
+            }
+        }
+
+        return error.localizedDescription
     }
 }
 

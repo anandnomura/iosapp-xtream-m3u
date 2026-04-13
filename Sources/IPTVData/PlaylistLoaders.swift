@@ -202,20 +202,20 @@ private extension KeyedDecodingContainer {
     }
 
     func decodeFlexibleStringIfPresent(forKey key: Key) throws -> String? {
-        if let stringValue = try? decodeIfPresent(String.self, forKey: key) {
+        guard contains(key) else {
+            return nil
+        }
+
+        if let stringValue = try? decode(String.self, forKey: key) {
             return stringValue
         }
 
-        if let intValue = try? decodeIfPresent(Int.self, forKey: key) {
-            if let intValue {
-                return String(intValue)
-            }
+        if let intValue = try? decode(Int.self, forKey: key) {
+            return String(intValue)
         }
 
-        if let doubleValue = try? decodeIfPresent(Double.self, forKey: key) {
-            if let doubleValue {
-                return String(Int(doubleValue))
-            }
+        if let doubleValue = try? decode(Double.self, forKey: key) {
+            return String(Int(doubleValue))
         }
 
         return nil

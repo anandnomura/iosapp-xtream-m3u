@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import IPTVDomain
 import IPTVData
@@ -21,30 +22,43 @@ final class RootViewModel: ObservableObject {
     @Published var xtreamPassword = ""
 
     @Published private(set) var activeProfile: ProviderProfile?
+    @Published private(set) var savedProfiles: [SavedProfileRecord] = []
     @Published private(set) var groups: [MediaGroup] = []
     @Published private(set) var items: [MediaItem] = []
+    @Published private(set) var lastUpdatedAt: Date?
     @Published private(set) var statusMessage = "Choose a source and load your channels."
     @Published private(set) var isLoading = false
     @Published var errorMessage: String?
 
     private let m3uLoader: M3UPlaylistLoader
     private let xtreamLoader: XtreamLivePlaylistLoader
+    private let persistence: AppPersistence
+    private var cancellables: Set<AnyCancellable> = []
 
     init(
         m3uLoader: M3UPlaylistLoader = M3UPlaylistLoader(),
-        xtreamLoader: XtreamLivePlaylistLoader = XtreamLivePlaylistLoader()
+        xtreamLoader: XtreamLivePlaylistLoader = XtreamLivePlaylistLoader(),
+        persistence: AppPersistence = .shared
     ) {
         self.m3uLoader = m3uLoader
         self.xtreamLoader = xtreamLoader
+        self.persistence = persistence
+        restorePersistedState()
+        bindDraftPersistence()
     }
 
     func loadChannels() async {
+        let profile = try? buildProfile()
+        await loadChannels(using: profile)
+    }
+
+    func loadChannels(using profileOverride: ProviderProfile?) async {
         isLoading = true
         errorMessage = nil
         statusMessage = "Loading channels..."
 
         do {
-            let profile = try buildProfile()
+            let profile = try profileOverride ?? buildProfile()
             let parsed: ParsedPlaylist
 
             switch profile.kind {
@@ -61,19 +75,55 @@ final class RootViewModel: ObservableObject {
                 parsed = try await xtreamLoader.load(credentials: credentials, providerID: profile.id)
             }
 
-            activeProfile = profile
-            groups = parsed.groups
-            items = parsed.items
+            applyLoadedPlaylist(parsed, for: profile, markAsActive: true)
             statusMessage = "Loaded \(parsed.items.count) channels across \(parsed.groups.count) groups."
         } catch {
-            activeProfile = nil
-            groups = []
-            items = []
             errorMessage = friendlyMessage(for: error)
             statusMessage = "Unable to load channels."
         }
 
         isLoading = false
+    }
+
+    func refreshActiveProfile() async {
+        guard let activeProfile else {
+            statusMessage = "Choose or save a profile first."
+            return
+        }
+
+        await loadChannels(using: activeProfile)
+    }
+
+    func selectProfile(_ record: SavedProfileRecord) {
+        activeProfile = record.profile
+        groups = record.groups
+        items = record.items
+        lastUpdatedAt = record.lastUpdatedAt
+        statusMessage = record.groups.isEmpty
+            ? "Profile selected. Load or refresh to fetch channels."
+            : "Loaded cached channels for \(record.profile.name)."
+        errorMessage = nil
+
+        populateInputs(from: record.profile)
+        markProfileOpened(record.profile.id)
+        persistence.saveActiveProfileID(record.profile.id)
+    }
+
+    func deleteProfiles(at offsets: IndexSet) {
+        let ids = offsets.map { savedProfiles[$0].id }
+        for index in offsets.sorted(by: >) {
+            savedProfiles.remove(at: index)
+        }
+        persistence.saveProfiles(savedProfiles)
+
+        if let activeProfile, ids.contains(activeProfile.id) {
+            self.activeProfile = nil
+            groups = []
+            items = []
+            lastUpdatedAt = nil
+            persistence.saveActiveProfileID(nil)
+            statusMessage = "Profile removed."
+        }
     }
 
     func items(in group: MediaGroup) -> [MediaItem] {
@@ -92,6 +142,13 @@ final class RootViewModel: ObservableObject {
                 throw PlaylistLoaderError.invalidURL
             }
 
+            if let existing = matchingSavedProfile(kind: .m3u, remoteURL: url, rawText: nil, host: nil, username: nil, password: nil) {
+                var updated = existing.profile
+                updated.name = finalName
+                updated.playlistSource = PlaylistSource(remoteURL: url)
+                return updated
+            }
+
             return ProviderProfile(
                 name: finalName,
                 kind: .m3u,
@@ -102,6 +159,13 @@ final class RootViewModel: ObservableObject {
             let text = rawM3UText.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !text.isEmpty else {
                 throw PlaylistLoaderError.missingSource
+            }
+
+            if let existing = matchingSavedProfile(kind: .m3u, remoteURL: nil, rawText: text, host: nil, username: nil, password: nil) {
+                var updated = existing.profile
+                updated.name = finalName
+                updated.playlistSource = PlaylistSource(rawText: text)
+                return updated
             }
 
             return ProviderProfile(
@@ -124,11 +188,153 @@ final class RootViewModel: ObservableObject {
                 throw PlaylistLoaderError.invalidURL
             }
 
+            if let existing = matchingSavedProfile(kind: .xtream, remoteURL: nil, rawText: nil, host: host, username: username, password: password) {
+                var updated = existing.profile
+                updated.name = finalName
+                updated.xtreamCredentials = XtreamCredentials(host: host, username: username, password: password)
+                return updated
+            }
+
             return ProviderProfile(
                 name: finalName,
                 kind: .xtream,
                 xtreamCredentials: XtreamCredentials(host: host, username: username, password: password)
             )
+        }
+    }
+
+    private func applyLoadedPlaylist(_ parsed: ParsedPlaylist, for profile: ProviderProfile, markAsActive: Bool) {
+        if markAsActive {
+            activeProfile = profile
+        }
+
+        groups = parsed.groups
+        items = parsed.items
+        lastUpdatedAt = .now
+        upsertSavedProfile(
+            SavedProfileRecord(
+                profile: profile,
+                groups: parsed.groups,
+                items: parsed.items,
+                lastUpdatedAt: .now,
+                lastOpenedAt: .now
+            )
+        )
+        populateInputs(from: profile)
+        persistence.saveActiveProfileID(profile.id)
+    }
+
+    private func bindDraftPersistence() {
+        Publishers.CombineLatest4($sourceMode, $profileName, $m3uURLString, $rawM3UText)
+            .combineLatest(Publishers.CombineLatest3($xtreamHostString, $xtreamUsername, $xtreamPassword))
+            .sink { [weak self] lhs, rhs in
+                guard let self else { return }
+
+                let draft = SourceDraft(
+                    sourceMode: lhs.0.rawValue,
+                    profileName: lhs.1,
+                    m3uURLString: lhs.2,
+                    rawM3UText: lhs.3,
+                    xtreamHostString: rhs.0,
+                    xtreamUsername: rhs.1,
+                    xtreamPassword: rhs.2
+                )
+                self.persistence.saveDraft(draft)
+            }
+            .store(in: &cancellables)
+    }
+
+    private func restorePersistedState() {
+        savedProfiles = persistence.loadProfiles()
+
+        if let draft = persistence.loadDraft() {
+            sourceMode = SourceMode(rawValue: draft.sourceMode) ?? .m3uURL
+            profileName = draft.profileName
+            m3uURLString = draft.m3uURLString
+            rawM3UText = draft.rawM3UText
+            xtreamHostString = draft.xtreamHostString
+            xtreamUsername = draft.xtreamUsername
+            xtreamPassword = draft.xtreamPassword
+        }
+
+        if let activeID = persistence.loadActiveProfileID(),
+           let record = savedProfiles.first(where: { $0.id == activeID }) {
+            selectProfile(record)
+        }
+    }
+
+    private func populateInputs(from profile: ProviderProfile) {
+        profileName = profile.name
+
+        switch profile.kind {
+        case .m3u:
+            sourceMode = .m3uURL
+            m3uURLString = profile.playlistSource?.remoteURL?.absoluteString ?? ""
+            rawM3UText = profile.playlistSource?.rawText ?? ""
+            if profile.playlistSource?.remoteURL == nil, !(profile.playlistSource?.rawText?.isEmpty ?? true) {
+                sourceMode = .m3uText
+            }
+            xtreamHostString = ""
+            xtreamUsername = ""
+            xtreamPassword = ""
+
+        case .xtream:
+            sourceMode = .xtream
+            m3uURLString = ""
+            rawM3UText = ""
+            xtreamHostString = profile.xtreamCredentials?.host.absoluteString ?? ""
+            xtreamUsername = profile.xtreamCredentials?.username ?? ""
+            xtreamPassword = profile.xtreamCredentials?.password ?? ""
+        }
+    }
+
+    private func upsertSavedProfile(_ record: SavedProfileRecord) {
+        savedProfiles.removeAll(where: { $0.id == record.id })
+        savedProfiles.insert(record, at: 0)
+        persistence.saveProfiles(savedProfiles)
+    }
+
+    private func markProfileOpened(_ id: UUID) {
+        guard let index = savedProfiles.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+
+        savedProfiles[index].lastOpenedAt = .now
+        let record = savedProfiles.remove(at: index)
+        savedProfiles.insert(record, at: 0)
+        persistence.saveProfiles(savedProfiles)
+    }
+
+    private func matchingSavedProfile(
+        kind: ProviderKind,
+        remoteURL: URL?,
+        rawText: String?,
+        host: URL?,
+        username: String?,
+        password: String?
+    ) -> SavedProfileRecord? {
+        savedProfiles.first { record in
+            guard record.profile.kind == kind else {
+                return false
+            }
+
+            switch kind {
+            case .m3u:
+                if let remoteURL {
+                    return record.profile.playlistSource?.remoteURL == remoteURL
+                }
+
+                if let rawText {
+                    return record.profile.playlistSource?.rawText == rawText
+                }
+
+                return false
+
+            case .xtream:
+                return record.profile.xtreamCredentials?.host == host
+                    && record.profile.xtreamCredentials?.username == username
+                    && (password == nil || record.profile.xtreamCredentials?.password == password)
+            }
         }
     }
 

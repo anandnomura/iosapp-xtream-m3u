@@ -12,6 +12,9 @@ struct RootView: View {
 
                 List {
                     headerSection
+                    if !viewModel.savedProfiles.isEmpty {
+                        savedProfilesSection
+                    }
                     sourceSection
                     statusSection
 
@@ -73,8 +76,43 @@ struct RootView: View {
 
                 HStack(spacing: 12) {
                     StatCapsule(title: "Sources", value: "3")
+                    StatCapsule(title: "Profiles", value: "\(viewModel.savedProfiles.count)")
                     StatCapsule(title: "Groups", value: "\(viewModel.groups.count)")
                     StatCapsule(title: "Channels", value: "\(viewModel.items.count)")
+                }
+            }
+            .cardStyle()
+        }
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+    }
+
+    private var savedProfilesSection: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 16) {
+                sectionHeader("Saved Profiles", subtitle: "Jump back into a provider and refresh only when you want")
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 14) {
+                        ForEach(viewModel.savedProfiles) { record in
+                            Button {
+                                viewModel.selectProfile(record)
+                            } label: {
+                                SavedProfileCard(
+                                    record: record,
+                                    isActive: viewModel.activeProfile?.id == record.id
+                                )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+
+                if !viewModel.savedProfiles.isEmpty {
+                    Text("Sources and loaded channels now persist on-device. Pull a profile back instantly, then refresh only when the provider changed.")
+                        .font(.footnote)
+                        .foregroundStyle(AppPalette.secondaryText)
                 }
             }
             .cardStyle()
@@ -168,6 +206,12 @@ struct RootView: View {
                     )
                 }
                 .disabled(viewModel.isLoading)
+
+                if !viewModel.savedProfiles.isEmpty {
+                    Text("Your current source entry is saved automatically so you can come back without retyping it.")
+                        .font(.caption)
+                        .foregroundStyle(AppPalette.secondaryText)
+                }
             }
             .cardStyle()
         }
@@ -210,6 +254,29 @@ struct RootView: View {
                     StatCapsule(title: "Groups", value: "\(viewModel.groups.count)")
                     StatCapsule(title: "Channels", value: "\(viewModel.items.count)")
                 }
+
+                if let lastUpdatedAt = viewModel.lastUpdatedAt {
+                    Text("Last refreshed \(lastUpdatedAt.formatted(date: .abbreviated, time: .shortened))")
+                        .font(.caption)
+                        .foregroundStyle(AppPalette.secondaryText)
+                }
+
+                HStack(spacing: 12) {
+                    Button {
+                        Task { await viewModel.refreshActiveProfile() }
+                    } label: {
+                        quickActionButton("Refresh Source", systemImage: "arrow.clockwise", fill: true)
+                    }
+                    .disabled(viewModel.isLoading)
+
+                    Button {
+                        if let active = viewModel.savedProfiles.firstIndex(where: { $0.profile.id == profile.id }) {
+                            viewModel.deleteProfiles(at: IndexSet(integer: active))
+                        }
+                    } label: {
+                        quickActionButton("Remove", systemImage: "trash", fill: false)
+                    }
+                }
             }
             .cardStyle()
         }
@@ -241,22 +308,42 @@ struct RootView: View {
                 .foregroundStyle(AppPalette.secondaryText)
         }
     }
+
+    private func quickActionButton(_ title: String, systemImage: String, fill: Bool) -> some View {
+        HStack {
+            Image(systemName: systemImage)
+            Text(title)
+                .fontWeight(.bold)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 14)
+        .foregroundStyle(fill ? .black.opacity(0.85) : .white)
+        .background(
+            fill ? AnyShapeStyle(
+                LinearGradient(colors: [AppPalette.mint, AppPalette.sky], startPoint: .leading, endPoint: .trailing)
+            ) : AnyShapeStyle(AppPalette.fieldFill),
+            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+        )
+    }
 }
 
 private struct ChannelListView: View {
     let group: MediaGroup
     let items: [MediaItem]
+    @State private var selectedItem: MediaItem?
+    @State private var searchText = ""
 
     var body: some View {
         ZStack {
             AppBackdrop()
 
-            List(items) { item in
-                NavigationLink {
-                    ChannelDetailView(item: item)
+            List(filteredItems) { item in
+                Button {
+                    selectedItem = item
                 } label: {
                     ChannelRow(item: item)
                 }
+                .buttonStyle(.plain)
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
             }
@@ -266,13 +353,30 @@ private struct ChannelListView: View {
         .navigationTitle(group.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
+        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search channels")
+        .navigationDestination(item: $selectedItem) { item in
+            ChannelDetailView(item: item, automaticallyPresentFullscreen: true)
+        }
+    }
+
+    private var filteredItems: [MediaItem] {
+        let term = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !term.isEmpty else {
+            return items
+        }
+
+        return items.filter { item in
+            item.title.localizedCaseInsensitiveContains(term)
+        }
     }
 }
 
 private struct ChannelDetailView: View {
     let item: MediaItem
+    let automaticallyPresentFullscreen: Bool
     @StateObject private var playerController = VLCPlayerController()
     @State private var isPresentingFullscreen = false
+    @State private var hasAutoPresented = false
 
     var body: some View {
         ZStack {
@@ -375,6 +479,16 @@ private struct ChannelDetailView: View {
             playerController.stop()
             playerController.detachOutput()
         }
+        .task {
+            guard automaticallyPresentFullscreen,
+                  !hasAutoPresented,
+                  item.source != nil else {
+                return
+            }
+
+            hasAutoPresented = true
+            isPresentingFullscreen = true
+        }
         .fullScreenCover(isPresented: $isPresentingFullscreen) {
             FullScreenPlayerView(
                 title: item.title,
@@ -439,6 +553,7 @@ private struct FullScreenPlayerView: View {
     @ObservedObject var playerController: VLCPlayerController
     @Environment(\.dismiss) private var dismiss
     @State private var controlsVisible = true
+    @State private var autoHideTask: Task<Void, Never>?
 
     var body: some View {
         ZStack {
@@ -448,9 +563,7 @@ private struct FullScreenPlayerView: View {
                 .ignoresSafeArea()
                 .contentShape(Rectangle())
                 .onTapGesture {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        controlsVisible.toggle()
-                    }
+                    revealControls()
                 }
 
             if controlsVisible {
@@ -467,6 +580,7 @@ private struct FullScreenPlayerView: View {
         .statusBarHidden(true)
         .onAppear {
             PlayerOrientationCoordinator.shared.requestLandscape()
+            revealControls()
             if let source {
                 Task {
                     await playerController.startPlayback(source: source)
@@ -474,7 +588,7 @@ private struct FullScreenPlayerView: View {
             }
         }
         .onDisappear {
-            playerController.stop()
+            autoHideTask?.cancel()
             playerController.detachOutput()
             PlayerOrientationCoordinator.shared.requestPortrait()
         }
@@ -483,11 +597,10 @@ private struct FullScreenPlayerView: View {
     private var topBar: some View {
         HStack(spacing: 14) {
             Button {
-                playerController.stop()
                 playerController.detachOutput()
                 dismiss()
             } label: {
-                Image(systemName: "xmark")
+                Image(systemName: "pip.exit")
                     .font(.headline.weight(.bold))
                     .frame(width: 42, height: 42)
                     .background(.black.opacity(0.45), in: Circle())
@@ -563,6 +676,102 @@ private struct FullScreenPlayerView: View {
             ) : AnyShapeStyle(Color.white.opacity(0.12)),
             in: RoundedRectangle(cornerRadius: 16, style: .continuous)
         )
+    }
+
+    private func revealControls() {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            controlsVisible = true
+        }
+
+        autoHideTask?.cancel()
+        autoHideTask = Task {
+            try? await Task.sleep(for: .seconds(10))
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    controlsVisible = false
+                }
+            }
+        }
+    }
+}
+
+private struct SavedProfileCard: View {
+    let record: SavedProfileRecord
+    let isActive: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(record.profile.name)
+                        .font(.headline.weight(.black))
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+                    Text(record.profile.kind.rawValue.uppercased())
+                        .font(.caption2.weight(.heavy))
+                        .foregroundStyle(isActive ? .black.opacity(0.8) : AppPalette.mint)
+                }
+
+                Spacer()
+
+                if isActive {
+                    Image(systemName: "dot.radiowaves.forward")
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(.black.opacity(0.82))
+                }
+            }
+
+            HStack(spacing: 10) {
+                miniStat("Groups", value: "\(record.groups.count)")
+                miniStat("Channels", value: "\(record.items.count)")
+            }
+
+            Text(summaryText)
+                .font(.caption)
+                .foregroundStyle(isActive ? .black.opacity(0.75) : AppPalette.secondaryText)
+                .lineLimit(2)
+        }
+        .padding(18)
+        .frame(width: 240, alignment: .leading)
+        .background(background, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(Color.white.opacity(isActive ? 0.0 : 0.08), lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(isActive ? 0.18 : 0.24), radius: 18, x: 0, y: 10)
+    }
+
+    private var background: some ShapeStyle {
+        if isActive {
+            return AnyShapeStyle(
+                LinearGradient(colors: [AppPalette.mint, AppPalette.sky], startPoint: .topLeading, endPoint: .bottomTrailing)
+            )
+        }
+
+        return AnyShapeStyle(AppPalette.card.opacity(0.96))
+    }
+
+    private var summaryText: String {
+        if let lastUpdatedAt = record.lastUpdatedAt {
+            return "Updated \(lastUpdatedAt.formatted(date: .abbreviated, time: .shortened))"
+        }
+
+        return "Saved and ready to refresh whenever the provider changes."
+    }
+
+    private func miniStat(_ label: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(label.uppercased())
+                .font(.caption2.weight(.heavy))
+                .foregroundStyle(isActive ? .black.opacity(0.55) : AppPalette.secondaryText)
+            Text(value)
+                .font(.subheadline.weight(.black))
+                .foregroundStyle(isActive ? .black.opacity(0.85) : .white)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background((isActive ? Color.black.opacity(0.08) : AppPalette.fieldFill), in: Capsule())
     }
 }
 

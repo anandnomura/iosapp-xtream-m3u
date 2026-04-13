@@ -8,10 +8,6 @@ jobs:
     name: Archive And Upload
     runs-on: macos-15
     timeout-minutes: 45
-    env:
-      ARCHIVE_PATH: ${{ runner.temp }}/OneXtreamM3U.xcarchive
-      EXPORT_PATH: ${{ runner.temp }}/export
-      LOG_PATH: ${{ runner.temp }}/logs
 
     steps:
       - name: Check out repository
@@ -30,6 +26,14 @@ jobs:
 
       - name: Prepare diagnostics folders
         run: |
+          export ARCHIVE_PATH="$RUNNER_TEMP/OneXtreamM3U.xcarchive"
+          export EXPORT_PATH="$RUNNER_TEMP/export"
+          export LOG_PATH="$RUNNER_TEMP/logs"
+          {
+            echo "ARCHIVE_PATH=$ARCHIVE_PATH"
+            echo "EXPORT_PATH=$EXPORT_PATH"
+            echo "LOG_PATH=$LOG_PATH"
+          } >> "$GITHUB_ENV"
           mkdir -p "$LOG_PATH" "$EXPORT_PATH"
 
       - name: Install signing assets

@@ -1,0 +1,20 @@
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# Xcode
+DerivedData/
+*.xcworkspace/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xcuserdatad/
+*.xcuserstate
+
+# Apple platform build artifacts
+*.ipa
+*.dSYM
+*.dSYM.zip
+
+# OS/editor noise
+.DS_Store
+Thumbs.db

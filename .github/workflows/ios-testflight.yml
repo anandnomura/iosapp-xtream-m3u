@@ -21,6 +21,17 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
+      - name: Prepare CI project settings
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          project = Path("project.yml")
+          text = project.read_text()
+          text = text.replace("CURRENT_PROJECT_VERSION: 1", f"CURRENT_PROJECT_VERSION: {__import__('os').environ['GITHUB_RUN_NUMBER']}")
+          project.write_text(text)
+          PY
+
       - name: Generate Xcode project
         run: xcodegen generate
 
@@ -75,9 +86,6 @@ jobs:
         run: |
           APP_INFO_PLIST="$ARCHIVE_PATH/Products/Applications/1xtream-m3u.app/Info.plist"
           APP_STORE_INFO_PLIST="$ARCHIVE_PATH/Info.plist"
-
-          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString 1.0" "$APP_INFO_PLIST"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${GITHUB_RUN_NUMBER}" "$APP_INFO_PLIST"
 
           /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP_INFO_PLIST" | tee "$LOG_PATH/bundle_id.txt"
           /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP_INFO_PLIST" | tee "$LOG_PATH/version.txt"

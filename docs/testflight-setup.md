@@ -106,8 +106,8 @@ This repo now enforces that by:
 For TestFlight uploads in CI:
 
 - `CFBundleShortVersionString` is currently stamped to `1.0`
-- `CFBundleVersion` is stamped from `GITHUB_RUN_NUMBER`
-- the stamping now happens on the archived app bundle before export/upload
+- `CFBundleVersion` is derived from `GITHUB_RUN_NUMBER`
+- CI patches [project.yml](/c:/Users/anand/Downloads/pypgms/iosapp/project.yml) before `xcodegen generate` so the generated Xcode project carries the correct build number through archive and export
 
 That means every workflow run should produce a higher build number automatically.
 

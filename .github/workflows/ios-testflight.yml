@@ -29,17 +29,10 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate
 
-      - name: Patch generated project build number
+      - name: Set CI build number with agvtool
         run: |
-          python - <<'PY'
-          from pathlib import Path
-          import os
-
-          pbxproj = Path("OneXtreamM3U.xcodeproj/project.pbxproj")
-          text = pbxproj.read_text()
-          text = text.replace("CURRENT_PROJECT_VERSION = 1;", f"CURRENT_PROJECT_VERSION = {os.environ['GITHUB_RUN_NUMBER']};")
-          pbxproj.write_text(text)
-          PY
+          xcrun agvtool new-marketing-version 1.0
+          xcrun agvtool new-version -all "${GITHUB_RUN_NUMBER}"
 
       - name: Prepare diagnostics folders
         run: |

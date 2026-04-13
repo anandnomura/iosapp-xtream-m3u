@@ -115,12 +115,13 @@ jobs:
           APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
         run: |
           set -o pipefail
-          xcrun iTMSTransporter \
-            -m upload \
-            -assetFile "$EXPORT_PATH/1xtream-m3u.ipa" \
-            -apiKey "$APP_STORE_CONNECT_KEY_ID" \
-            -apiIssuer "$APP_STORE_CONNECT_ISSUER_ID" \
-            -v informational | tee "$LOG_PATH/transporter-upload.log"
+          xcrun altool \
+            --upload-app \
+            --type ios \
+            --file "$EXPORT_PATH/1xtream-m3u.ipa" \
+            --apiKey "$APP_STORE_CONNECT_KEY_ID" \
+            --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID" \
+            --output-format xml | tee "$LOG_PATH/altool-upload.log"
 
       - name: Upload IPA artifact
         if: always()

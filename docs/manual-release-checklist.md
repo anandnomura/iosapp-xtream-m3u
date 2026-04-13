@@ -72,7 +72,7 @@ These were created locally and must not be committed:
    - `1xtream-m3u-ipa-<run_number>`
    - `1xtream-m3u-diagnostics-<run_number>`
 4. If the build does not appear in App Store Connect, inspect:
-   - `transporter-upload.log`
+   - `altool-upload.log`
    - `DistributionSummary.plist`
    - `Packaging.log`
    - `bundle_id.txt`

@@ -21,7 +21,7 @@ This repo now includes a minimal iPhone app scaffold and a working GitHub Action
 - Live channel browsing by loaded groups
 - Signing hooks for GitHub-hosted macOS runners
 - Manual TestFlight workflow at `.github/workflows/ios-testflight.yml`
-- Successful archive, export, and TestFlight upload command execution from GitHub Actions
+- Successful archive and export from GitHub Actions
 - Workflow artifact retention for the generated `.ipa` and release diagnostics
 
 ## GitHub repository secrets actually used
@@ -100,7 +100,7 @@ The workflow now preserves these artifacts even if the upload step fails:
   - contains:
     - `archive.log`
     - `export.log`
-    - `transporter-upload.log`
+    - `altool-upload.log`
     - `App-Info.plist`
     - `Archive-Info.plist`
     - `ExportOptions.plist`
@@ -132,7 +132,7 @@ The workflow now preserves these artifacts even if the upload step fails:
 6. Writes the App Store Connect API key to the runner
 7. Archives the app with distribution signing
 8. Exports the `.ipa`
-9. Uploads the build to TestFlight with `iTMSTransporter`
+9. Uploads the build to TestFlight with `altool`
 10. Saves the `.ipa` and release diagnostics as downloadable workflow artifacts
 
 ## Important current limitation

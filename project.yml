@@ -33,6 +33,9 @@ targets:
             8kultradnscloud.ru:
               NSExceptionAllowsInsecureHTTPLoads: true
               NSIncludesSubdomains: true
+            line.8kultradnscloud.ru:
+              NSExceptionAllowsInsecureHTTPLoads: true
+              NSIncludesSubdomains: true
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
         UIApplicationSupportsIndirectInputEvents: true

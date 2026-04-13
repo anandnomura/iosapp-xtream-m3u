@@ -30,9 +30,7 @@ final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLC
         do {
             probeSummary = try await probe(url: source.url)
         } catch {
-            stateDescription = "Network probe failed"
-            errorMessage = friendlyProbeMessage(for: error, url: source.url)
-            return
+            probeSummary = "Probe warning: \(friendlyProbeMessage(for: error, url: source.url))"
         }
 
         let media = VLCMedia(url: source.url)
@@ -44,6 +42,7 @@ final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLC
             media.addOption(":demux=ts")
         }
         mediaPlayer.media = media
+        stateDescription = "Starting VLC..."
         mediaPlayer.play()
     }
 
@@ -110,7 +109,7 @@ final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLC
             case NSURLErrorTimedOut:
                 return "The stream server timed out before sending playable data."
             case NSURLErrorAppTransportSecurityRequiresSecureConnection:
-                return "ATS is still blocking this exact playback host: \(url.absoluteString)"
+                return "Apple networking blocked \(url.absoluteString), but VLC will still attempt playback."
             default:
                 return error.localizedDescription
             }

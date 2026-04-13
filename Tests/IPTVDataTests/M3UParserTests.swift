@@ -39,7 +39,7 @@ final class M3UParserTests: XCTestCase {
         let playlist = """
         #EXTM3U
         #EXTINF:-1 group-title="Live",Arena Sport
-        http://8kultradnscloud.ru/live/user/pass/12345?output=ts
+        http://example.com/live/user/pass/12345?output=ts
         """
 
         let parsed = try parser.parse(text: playlist, providerID: providerID)

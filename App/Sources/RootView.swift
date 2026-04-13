@@ -1,4 +1,3 @@
-import AVKit
 import SwiftUI
 import IPTVDomain
 
@@ -271,7 +270,7 @@ private struct ChannelListView: View {
 
 private struct ChannelDetailView: View {
     let item: MediaItem
-    @State private var player: AVPlayer?
+    @StateObject private var playerController = VLCPlayerController()
 
     var body: some View {
         ZStack {
@@ -295,27 +294,30 @@ private struct ChannelDetailView: View {
                 if let source = item.source {
                     Section {
                         VStack(alignment: .leading, spacing: 14) {
-                            VideoPlayer(player: player)
+                            VLCVideoSurfaceView(mediaPlayer: playerController.mediaPlayer)
                                 .frame(minHeight: 230)
                                 .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
 
                             HStack(spacing: 12) {
                                 Button {
-                                    let nextPlayer = AVPlayer(url: source.url)
-                                    nextPlayer.play()
-                                    player = nextPlayer
+                                    playerController.play(url: source.url)
                                 } label: {
                                     playerButton("Play Stream", systemImage: "play.fill", fill: true)
                                 }
 
                                 Button {
-                                    player?.pause()
-                                    player = nil
+                                    playerController.stop()
                                 } label: {
                                     playerButton("Stop", systemImage: "stop.fill", fill: false)
                                 }
-                                .disabled(player == nil)
-                                .opacity(player == nil ? 0.45 : 1)
+                            }
+
+                            StatCapsule(title: "Player", value: playerController.stateDescription)
+
+                            if let errorMessage = playerController.errorMessage {
+                                Text(errorMessage)
+                                    .font(.footnote)
+                                    .foregroundStyle(AppPalette.secondaryText)
                             }
                         }
                         .cardStyle()
@@ -347,8 +349,7 @@ private struct ChannelDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .onDisappear {
-            player?.pause()
-            player = nil
+            playerController.stop()
         }
     }
 

@@ -330,7 +330,7 @@ struct RootView: View {
 private struct ChannelListView: View {
     let group: MediaGroup
     let items: [MediaItem]
-    @State private var selectedItem: MediaItem?
+    @State private var selectedRoute: ChannelRoute?
     @State private var searchText = ""
 
     var body: some View {
@@ -339,7 +339,9 @@ private struct ChannelListView: View {
 
             List(filteredItems) { item in
                 Button {
-                    selectedItem = item
+                    if let index = filteredItems.firstIndex(of: item) {
+                        selectedRoute = ChannelRoute(index: index)
+                    }
                 } label: {
                     ChannelRow(item: item)
                 }
@@ -354,8 +356,8 @@ private struct ChannelListView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search channels")
-        .navigationDestination(item: $selectedItem) { item in
-            ChannelDetailView(item: item, automaticallyPresentFullscreen: true)
+        .navigationDestination(item: $selectedRoute) { route in
+            ChannelDetailView(playlist: filteredItems, initialIndex: route.index, groupName: group.name)
         }
     }
 
@@ -371,12 +373,28 @@ private struct ChannelListView: View {
     }
 }
 
+private struct ChannelRoute: Identifiable, Hashable {
+    let index: Int
+
+    var id: Int { index }
+}
+
 private struct ChannelDetailView: View {
-    let item: MediaItem
-    let automaticallyPresentFullscreen: Bool
+    let playlist: [MediaItem]
+    let initialIndex: Int
+    let groupName: String
     @StateObject private var playerController = VLCPlayerController()
     @State private var isPresentingFullscreen = false
     @State private var hasAutoPresented = false
+    @State private var currentIndex: Int
+    @Environment(\.dismiss) private var dismiss
+
+    init(playlist: [MediaItem], initialIndex: Int, groupName: String) {
+        self.playlist = playlist
+        self.initialIndex = initialIndex
+        self.groupName = groupName
+        _currentIndex = State(initialValue: initialIndex)
+    }
 
     var body: some View {
         ZStack {
@@ -385,19 +403,20 @@ private struct ChannelDetailView: View {
             List {
                 Section {
                     VStack(alignment: .leading, spacing: 14) {
-                        Text(item.title)
+                        Text(currentItem.title)
                             .font(.system(size: 28, weight: .black, design: .rounded))
                             .foregroundStyle(.white)
 
                         HStack(spacing: 12) {
-                            StatCapsule(title: "Kind", value: item.kind.rawValue.uppercased())
-                            StatCapsule(title: "ID", value: item.id)
+                            StatCapsule(title: "Kind", value: currentItem.kind.rawValue.uppercased())
+                            StatCapsule(title: "ID", value: currentItem.id)
+                            StatCapsule(title: "Group", value: groupName)
                         }
                     }
                     .cardStyle()
                 }
 
-                if let source = item.source {
+                if let source = currentItem.source {
                     Section {
                         VStack(alignment: .leading, spacing: 14) {
                             videoSurfaceCard
@@ -472,7 +491,7 @@ private struct ChannelDetailView: View {
             .scrollContentBackground(.hidden)
             .listStyle(.plain)
         }
-        .navigationTitle(item.title)
+        .navigationTitle(currentItem.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .onDisappear {
@@ -480,9 +499,9 @@ private struct ChannelDetailView: View {
             playerController.detachOutput()
         }
         .task {
-            guard automaticallyPresentFullscreen,
+            guard !playlist.isEmpty,
                   !hasAutoPresented,
-                  item.source != nil else {
+                  currentItem.source != nil else {
                 return
             }
 
@@ -491,15 +510,27 @@ private struct ChannelDetailView: View {
         }
         .fullScreenCover(isPresented: $isPresentingFullscreen) {
             FullScreenPlayerView(
-                title: item.title,
+                title: currentItem.title,
                 source: sourceOrNil,
+                hasPreviousChannel: currentIndex > 0,
+                hasNextChannel: currentIndex < playlist.count - 1,
                 playerController: playerController
+            ) {
+                dismissToBrowser()
+            } onPreviousChannel: {
+                moveChannel(by: -1)
+            } onNextChannel: {
+                moveChannel(by: 1)
             )
         }
     }
 
+    private var currentItem: MediaItem {
+        playlist[currentIndex]
+    }
+
     private var sourceOrNil: PlaybackSource? {
-        item.source
+        currentItem.source
     }
 
     @ViewBuilder
@@ -545,12 +576,37 @@ private struct ChannelDetailView: View {
             in: RoundedRectangle(cornerRadius: 16, style: .continuous)
         )
     }
+
+    private func moveChannel(by step: Int) {
+        let nextIndex = currentIndex + step
+        guard playlist.indices.contains(nextIndex) else {
+            return
+        }
+
+        currentIndex = nextIndex
+        if let source = currentItem.source {
+            Task {
+                await playerController.startPlayback(source: source)
+            }
+        }
+    }
+
+    private func dismissToBrowser() {
+        playerController.stop()
+        playerController.detachOutput()
+        dismiss()
+    }
 }
 
 private struct FullScreenPlayerView: View {
     let title: String
     let source: PlaybackSource?
+    let hasPreviousChannel: Bool
+    let hasNextChannel: Bool
     @ObservedObject var playerController: VLCPlayerController
+    let onBackToBrowser: () -> Void
+    let onPreviousChannel: () -> Void
+    let onNextChannel: () -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var controlsVisible = true
     @State private var autoHideTask: Task<Void, Never>?
@@ -561,7 +617,9 @@ private struct FullScreenPlayerView: View {
 
             VLCVideoSurfaceView(mediaPlayer: playerController.mediaPlayer)
                 .ignoresSafeArea()
+            Color.clear
                 .contentShape(Rectangle())
+                .ignoresSafeArea()
                 .onTapGesture {
                     revealControls()
                 }
@@ -606,6 +664,20 @@ private struct FullScreenPlayerView: View {
                     .background(.black.opacity(0.45), in: Circle())
             }
 
+            Button {
+                playerController.stop()
+                playerController.detachOutput()
+                dismiss()
+                Task { @MainActor in
+                    onBackToBrowser()
+                }
+            } label: {
+                Image(systemName: "chevron.backward")
+                    .font(.headline.weight(.bold))
+                    .frame(width: 42, height: 42)
+                    .background(.black.opacity(0.45), in: Circle())
+            }
+
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(.headline.weight(.bold))
@@ -626,6 +698,14 @@ private struct FullScreenPlayerView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
                 Button {
+                    onPreviousChannel()
+                    revealControls()
+                } label: {
+                    fullscreenButton("Prev", systemImage: "backward.fill", fill: false)
+                }
+                .disabled(!hasPreviousChannel)
+
+                Button {
                     if let source {
                         Task {
                             await playerController.startPlayback(source: source)
@@ -641,6 +721,14 @@ private struct FullScreenPlayerView: View {
                 } label: {
                     fullscreenButton("Stop", systemImage: "stop.fill", fill: false)
                 }
+
+                Button {
+                    onNextChannel()
+                    revealControls()
+                } label: {
+                    fullscreenButton("Next", systemImage: "forward.fill", fill: false)
+                }
+                .disabled(!hasNextChannel)
             }
 
             if let probeSummary = playerController.probeSummary {

@@ -47,4 +47,21 @@ final class M3UParserTests: XCTestCase {
         XCTAssertEqual(parsed.items.count, 1)
         XCTAssertEqual(parsed.items[0].source?.containerHint, "ts")
     }
+
+    func testParserAcceptsBomAndLeadingBlankLines() throws {
+        let parser = M3UParser()
+        let providerID = UUID(uuidString: "99999999-8888-7777-6666-555555555555")!
+        let playlist = """
+        \u{FEFF}
+
+        #EXTM3U
+        #EXTINF:-1 group-title="Live",Channel One
+        http://example.com/live/1.ts
+        """
+
+        let parsed = try parser.parse(text: playlist, providerID: providerID)
+
+        XCTAssertEqual(parsed.items.count, 1)
+        XCTAssertEqual(parsed.groups.first?.name, "Live")
+    }
 }

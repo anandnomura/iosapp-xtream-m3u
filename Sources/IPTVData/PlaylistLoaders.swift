@@ -39,12 +39,18 @@ public struct M3UPlaylistLoader: Sendable {
             throw PlaylistLoaderError.missingSource
         }
 
-        let (data, response) = try await session.data(from: remoteURL)
+        var request = URLRequest(url: remoteURL)
+        request.setValue("*/*", forHTTPHeaderField: "Accept")
+        request.setValue("1xtream-m3u/1.0", forHTTPHeaderField: "User-Agent")
+
+        let (data, response) = try await session.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse, 200..<300 ~= httpResponse.statusCode else {
             throw PlaylistLoaderError.invalidResponse
         }
 
-        guard let text = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) else {
+        guard let text = String(data: data, encoding: .utf8)
+            ?? String(data: data, encoding: .utf16)
+            ?? String(data: data, encoding: .isoLatin1) else {
             throw PlaylistLoaderError.invalidResponse
         }
 

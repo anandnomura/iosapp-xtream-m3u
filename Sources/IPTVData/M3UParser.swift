@@ -19,12 +19,18 @@ public struct M3UParser: Sendable {
     public init() {}
 
     public func parse(text: String, providerID: UUID) throws -> ParsedPlaylist {
-        let normalized = text.replacingOccurrences(of: "\r\n", with: "\n")
+        let normalized = text
+            .replacingOccurrences(of: "\u{FEFF}", with: "")
+            .replacingOccurrences(of: "\r\n", with: "\n")
         let lines = normalized
             .split(separator: "\n", omittingEmptySubsequences: false)
             .map(String.init)
 
-        guard lines.first?.trimmingCharacters(in: .whitespacesAndNewlines) == "#EXTM3U" else {
+        let firstMeaningfulLine = lines.first {
+            !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard firstMeaningfulLine == "#EXTM3U" else {
             throw M3UParserError.missingHeader
         }
 

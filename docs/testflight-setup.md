@@ -90,6 +90,19 @@ These values are referenced by the iOS upload workflow:
 - export method: `app-store`
 - generated IPA filename: `1xtream-m3u.ipa`
 
+## Version metadata requirement
+
+The upload flow is sensitive to the packaged app metadata types:
+
+- `CFBundleVersion` must be packaged as a string
+- `CFBundleShortVersionString` must be packaged as a string
+
+This repo now enforces that by:
+
+- keeping the version keys in [App/Info.plist](/c:/Users/anand/Downloads/pypgms/iosapp/App/Info.plist)
+- using plist placeholders like `$(CURRENT_PROJECT_VERSION)` and `$(MARKETING_VERSION)`
+- avoiding numeric injection of those keys from [project.yml](/c:/Users/anand/Downloads/pypgms/iosapp/project.yml)
+
 ## Workflow artifacts created on every run
 
 The workflow now preserves these artifacts even if the upload step fails:

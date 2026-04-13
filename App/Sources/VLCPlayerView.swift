@@ -29,7 +29,7 @@ final class VLCPlayerController: NSObject, ObservableObject, VLCMediaPlayerDeleg
         stateDescription = "Stopped"
     }
 
-    func mediaPlayerStateChanged(_ notification: Notification!) {
+    func mediaPlayerStateChanged(_ notification: Notification) {
         let state = mediaPlayer.state
 
         DispatchQueue.main.async {
@@ -68,7 +68,7 @@ struct VLCVideoSurfaceView: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: UIView, context: Context) {
-        if mediaPlayer.drawable !== uiView {
+        if (mediaPlayer.drawable as AnyObject?) !== uiView {
             mediaPlayer.drawable = uiView
         }
     }

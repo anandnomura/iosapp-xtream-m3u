@@ -133,6 +133,14 @@ final class RootViewModel: ObservableObject {
     }
 
     private func friendlyMessage(for error: Error) -> String {
+        let nsError = error as NSError
+
+        if nsError.domain == NSURLErrorDomain, nsError.code == NSURLErrorAppTransportSecurityRequiresSecureConnection {
+            let failingURL = nsError.userInfo[NSURLErrorFailingURLErrorKey] as? URL
+            let failingString = failingURL?.absoluteString ?? "unknown URL"
+            return "ATS blocked an insecure request for \(failingString). This build should allow common IPTV HTTP sources, so if this persists we need to inspect the exact redirected host."
+        }
+
         if let localized = error as? LocalizedError, let description = localized.errorDescription {
             return description
         }

@@ -3,6 +3,10 @@ import IPTVDomain
 import SwiftUI
 import UIKit
 
+extension Notification.Name {
+    static let emergencyStopPlayback = Notification.Name("app.emergencyStopPlayback")
+}
+
 @MainActor
 final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLCMediaPlayerDelegate {
     @Published var errorMessage: String?
@@ -20,6 +24,16 @@ final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLC
         self.session = URLSession(configuration: configuration)
         super.init()
         mediaPlayer.delegate = self
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleEmergencyStopPlayback),
+            name: .emergencyStopPlayback,
+            object: nil
+        )
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
     }
 
     func startPlayback(source: PlaybackSource) async {
@@ -54,6 +68,11 @@ final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLC
 
     func detachOutput() {
         mediaPlayer.drawable = nil
+    }
+
+    @objc private func handleEmergencyStopPlayback() {
+        stop()
+        detachOutput()
     }
 
     nonisolated func mediaPlayerStateChanged(_ notification: Notification) {

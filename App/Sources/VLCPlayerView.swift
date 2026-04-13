@@ -48,7 +48,12 @@ final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLC
 
     func stop() {
         mediaPlayer.stop()
+        mediaPlayer.media = nil
         stateDescription = "Stopped"
+    }
+
+    func detachOutput() {
+        mediaPlayer.drawable = nil
     }
 
     nonisolated func mediaPlayerStateChanged(_ notification: Notification) {

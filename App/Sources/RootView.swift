@@ -1,5 +1,6 @@
 import SwiftUI
 import IPTVDomain
+import UIKit
 
 struct RootView: View {
     @ObservedObject var viewModel: RootViewModel
@@ -271,6 +272,7 @@ private struct ChannelListView: View {
 private struct ChannelDetailView: View {
     let item: MediaItem
     @StateObject private var playerController = VLCPlayerController()
+    @State private var isPresentingFullscreen = false
 
     var body: some View {
         ZStack {
@@ -294,9 +296,7 @@ private struct ChannelDetailView: View {
                 if let source = item.source {
                     Section {
                         VStack(alignment: .leading, spacing: 14) {
-                            VLCVideoSurfaceView(mediaPlayer: playerController.mediaPlayer)
-                                .frame(minHeight: 230)
-                                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                            videoSurfaceCard
 
                             HStack(spacing: 12) {
                                 Button {
@@ -312,6 +312,21 @@ private struct ChannelDetailView: View {
                                 } label: {
                                     playerButton("Stop", systemImage: "stop.fill", fill: false)
                                 }
+                            }
+
+                            Button {
+                                isPresentingFullscreen = true
+                            } label: {
+                                HStack {
+                                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                                    Text("Open Full Screen")
+                                        .fontWeight(.bold)
+                                    Spacer()
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 14)
+                                .foregroundStyle(.white)
+                                .background(AppPalette.fieldFill, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                             }
 
                             StatCapsule(title: "Player", value: playerController.stateDescription)
@@ -358,6 +373,45 @@ private struct ChannelDetailView: View {
         .toolbarBackground(.hidden, for: .navigationBar)
         .onDisappear {
             playerController.stop()
+            playerController.detachOutput()
+        }
+        .fullScreenCover(isPresented: $isPresentingFullscreen) {
+            FullScreenPlayerView(
+                title: item.title,
+                source: sourceOrNil,
+                playerController: playerController
+            )
+        }
+    }
+
+    private var sourceOrNil: PlaybackSource? {
+        item.source
+    }
+
+    @ViewBuilder
+    private var videoSurfaceCard: some View {
+        if isPresentingFullscreen {
+            ZStack {
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .fill(Color.black)
+
+                VStack(spacing: 10) {
+                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                        .font(.system(size: 28, weight: .bold))
+                        .foregroundStyle(AppPalette.mint)
+                    Text("Playing in full screen")
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(.white)
+                    Text("Close the player to return here.")
+                        .font(.footnote)
+                        .foregroundStyle(AppPalette.secondaryText)
+                }
+            }
+            .frame(minHeight: 230)
+        } else {
+            VLCVideoSurfaceView(mediaPlayer: playerController.mediaPlayer)
+                .frame(minHeight: 230)
+                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         }
     }
 
@@ -376,6 +430,162 @@ private struct ChannelDetailView: View {
             ) : AnyShapeStyle(AppPalette.fieldFill),
             in: RoundedRectangle(cornerRadius: 16, style: .continuous)
         )
+    }
+}
+
+private struct FullScreenPlayerView: View {
+    let title: String
+    let source: PlaybackSource?
+    @ObservedObject var playerController: VLCPlayerController
+    @Environment(\.dismiss) private var dismiss
+    @State private var controlsVisible = true
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+
+            VLCVideoSurfaceView(mediaPlayer: playerController.mediaPlayer)
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        controlsVisible.toggle()
+                    }
+                }
+
+            if controlsVisible {
+                VStack(spacing: 0) {
+                    topBar
+                    Spacer()
+                    bottomBar
+                }
+                .padding(.top, 10)
+                .padding(.bottom, 20)
+                .transition(.opacity)
+            }
+        }
+        .statusBarHidden(true)
+        .onAppear {
+            PlayerOrientationCoordinator.shared.requestLandscape()
+            if let source {
+                Task {
+                    await playerController.startPlayback(source: source)
+                }
+            }
+        }
+        .onDisappear {
+            playerController.stop()
+            playerController.detachOutput()
+            PlayerOrientationCoordinator.shared.requestPortrait()
+        }
+    }
+
+    private var topBar: some View {
+        HStack(spacing: 14) {
+            Button {
+                playerController.stop()
+                playerController.detachOutput()
+                dismiss()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.headline.weight(.bold))
+                    .frame(width: 42, height: 42)
+                    .background(.black.opacity(0.45), in: Circle())
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                Text(playerController.stateDescription)
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.8))
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 8)
+    }
+
+    private var bottomBar: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                Button {
+                    if let source {
+                        Task {
+                            await playerController.startPlayback(source: source)
+                        }
+                    }
+                } label: {
+                    fullscreenButton("Play", systemImage: "play.fill", fill: true)
+                }
+
+                Button {
+                    playerController.stop()
+                    playerController.detachOutput()
+                } label: {
+                    fullscreenButton("Stop", systemImage: "stop.fill", fill: false)
+                }
+            }
+
+            if let probeSummary = playerController.probeSummary {
+                Text(probeSummary)
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.8))
+            }
+
+            if let errorMessage = playerController.errorMessage {
+                Text(errorMessage)
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.8))
+            }
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.black.opacity(0.52), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .padding(.horizontal, 20)
+    }
+
+    private func fullscreenButton(_ title: String, systemImage: String, fill: Bool) -> some View {
+        HStack {
+            Image(systemName: systemImage)
+            Text(title)
+                .fontWeight(.bold)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 14)
+        .foregroundStyle(fill ? .black.opacity(0.85) : .white)
+        .background(
+            fill ? AnyShapeStyle(
+                LinearGradient(colors: [AppPalette.mint, AppPalette.sky], startPoint: .leading, endPoint: .trailing)
+            ) : AnyShapeStyle(Color.white.opacity(0.12)),
+            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+        )
+    }
+}
+
+private final class PlayerOrientationCoordinator {
+    static let shared = PlayerOrientationCoordinator()
+
+    func requestLandscape() {
+        request(mask: .landscape)
+    }
+
+    func requestPortrait() {
+        request(mask: .portrait)
+    }
+
+    private func request(mask: UIInterfaceOrientationMask) {
+        guard let scene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first(where: { $0.activationState == .foregroundActive }) else {
+            return
+        }
+
+        let preferences = UIWindowScene.GeometryPreferences.iOS(interfaceOrientations: mask)
+        try? scene.requestGeometryUpdate(preferences)
     }
 }
 

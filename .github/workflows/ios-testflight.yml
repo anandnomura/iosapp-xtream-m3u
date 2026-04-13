@@ -21,6 +21,11 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
+      - name: Stamp source plist for CI build
+        run: |
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString 1.0" App/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${GITHUB_RUN_NUMBER}" App/Info.plist
+
       - name: Generate Xcode project
         run: xcodegen generate
 

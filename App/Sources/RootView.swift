@@ -386,6 +386,7 @@ private struct ChannelDetailView: View {
     @StateObject private var playerController = VLCPlayerController()
     @State private var isPresentingFullscreen = false
     @State private var hasAutoPresented = false
+    @State private var isMiniPlayerActive = false
     @State private var currentIndex: Int
     @Environment(\.dismiss) private var dismiss
 
@@ -506,6 +507,7 @@ private struct ChannelDetailView: View {
             }
 
             hasAutoPresented = true
+            isMiniPlayerActive = true
             isPresentingFullscreen = true
         }
         .fullScreenCover(isPresented: $isPresentingFullscreen) {
@@ -517,6 +519,8 @@ private struct ChannelDetailView: View {
                 playerController: playerController
             ) {
                 dismissToBrowser()
+            } onMinimize: {
+                isMiniPlayerActive = true
             } onPreviousChannel: {
                 moveChannel(by: -1)
             } onNextChannel: {
@@ -553,6 +557,28 @@ private struct ChannelDetailView: View {
                 }
             }
             .frame(minHeight: 230)
+        } else if isMiniPlayerActive {
+            VStack(alignment: .leading, spacing: 12) {
+                VLCVideoSurfaceView(mediaPlayer: playerController.mediaPlayer)
+                    .frame(minHeight: 210)
+                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+
+                HStack(spacing: 12) {
+                    Button {
+                        isPresentingFullscreen = true
+                    } label: {
+                        playerButton("Expand Player", systemImage: "arrow.up.left.and.arrow.down.right", fill: true)
+                    }
+
+                    Button {
+                        playerController.stop()
+                        playerController.detachOutput()
+                        isMiniPlayerActive = false
+                    } label: {
+                        playerButton("Stop", systemImage: "stop.fill", fill: false)
+                    }
+                }
+            }
         } else {
             VLCVideoSurfaceView(mediaPlayer: playerController.mediaPlayer)
                 .frame(minHeight: 230)
@@ -584,6 +610,7 @@ private struct ChannelDetailView: View {
         }
 
         currentIndex = nextIndex
+        isMiniPlayerActive = true
         if let source = currentItem.source {
             Task {
                 await playerController.startPlayback(source: source)
@@ -594,6 +621,7 @@ private struct ChannelDetailView: View {
     private func dismissToBrowser() {
         playerController.stop()
         playerController.detachOutput()
+        isMiniPlayerActive = false
         dismiss()
     }
 }
@@ -605,6 +633,7 @@ private struct FullScreenPlayerView: View {
     let hasNextChannel: Bool
     @ObservedObject var playerController: VLCPlayerController
     let onBackToBrowser: () -> Void
+    let onMinimize: () -> Void
     let onPreviousChannel: () -> Void
     let onNextChannel: () -> Void
     @Environment(\.dismiss) private var dismiss
@@ -638,7 +667,7 @@ private struct FullScreenPlayerView: View {
         .statusBarHidden(true)
         .onAppear {
             PlayerOrientationCoordinator.shared.requestLandscape()
-            revealControls()
+            controlsVisible = true
             if let source {
                 Task {
                     await playerController.startPlayback(source: source)
@@ -650,12 +679,22 @@ private struct FullScreenPlayerView: View {
             playerController.detachOutput()
             PlayerOrientationCoordinator.shared.requestPortrait()
         }
+        .onReceive(playerController.$stateDescription) { _ in
+            if shouldAutoHideControls {
+                revealControls()
+            } else {
+                autoHideTask?.cancel()
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    controlsVisible = true
+                }
+            }
+        }
     }
 
     private var topBar: some View {
         HStack(spacing: 14) {
             Button {
-                playerController.detachOutput()
+                onMinimize()
                 dismiss()
             } label: {
                 Image(systemName: "pip.exit")
@@ -706,13 +745,9 @@ private struct FullScreenPlayerView: View {
                 .disabled(!hasPreviousChannel)
 
                 Button {
-                    if let source {
-                        Task {
-                            await playerController.startPlayback(source: source)
-                        }
-                    }
+                    Task { await playerController.retryPlayback() }
                 } label: {
-                    fullscreenButton("Play", systemImage: "play.fill", fill: true)
+                    fullscreenButton(primaryActionTitle, systemImage: primaryActionIcon, fill: true)
                 }
 
                 Button {
@@ -772,6 +807,10 @@ private struct FullScreenPlayerView: View {
         }
 
         autoHideTask?.cancel()
+        guard shouldAutoHideControls else {
+            return
+        }
+
         autoHideTask = Task {
             try? await Task.sleep(for: .seconds(10))
             guard !Task.isCancelled else { return }
@@ -781,6 +820,18 @@ private struct FullScreenPlayerView: View {
                 }
             }
         }
+    }
+
+    private var shouldAutoHideControls: Bool {
+        playerController.stateDescription == "Playing" || playerController.stateDescription == "Buffering..."
+    }
+
+    private var primaryActionTitle: String {
+        playerController.errorMessage == nil ? "Play" : "Retry"
+    }
+
+    private var primaryActionIcon: String {
+        playerController.errorMessage == nil ? "play.fill" : "arrow.clockwise"
     }
 }
 

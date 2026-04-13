@@ -347,6 +347,20 @@ final class RootViewModel: ObservableObject {
             return "ATS blocked an insecure request for \(failingString). This build should allow common IPTV HTTP sources, so if this persists we need to inspect the exact redirected host."
         }
 
+        if let remotePlaylistError = error as? RemotePlaylistError {
+            switch remotePlaylistError.kind {
+            case .invalidPlaylist:
+                let preview = remotePlaylistError.responsePreview ?? "No preview available."
+                return "The provider URL did respond, but it did not return clean M3U text. Preview: \(preview)"
+            case .invalidStatus:
+                return remotePlaylistError.errorDescription ?? "The playlist server returned an unexpected response."
+            case .unsupportedEncoding:
+                return remotePlaylistError.errorDescription ?? "The playlist server returned unreadable text."
+            case .network:
+                return remotePlaylistError.errorDescription ?? "The playlist server could not be reached."
+            }
+        }
+
         if let localized = error as? LocalizedError, let description = localized.errorDescription {
             return description
         }

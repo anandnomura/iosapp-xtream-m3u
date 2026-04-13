@@ -12,6 +12,7 @@ final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLC
     @Published var errorMessage: String?
     @Published var stateDescription = "Ready"
     @Published var probeSummary: String?
+    @Published private(set) var currentSource: PlaybackSource?
 
     let mediaPlayer = VLCMediaPlayer()
     private let session: URLSession
@@ -37,6 +38,7 @@ final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLC
     }
 
     func startPlayback(source: PlaybackSource) async {
+        currentSource = source
         errorMessage = nil
         probeSummary = nil
         stateDescription = "Opening stream..."
@@ -63,6 +65,7 @@ final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLC
     func stop() {
         mediaPlayer.stop()
         mediaPlayer.media = nil
+        currentSource = nil
         stateDescription = "Stopped"
     }
 
@@ -73,6 +76,14 @@ final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLC
     @objc private func handleEmergencyStopPlayback() {
         stop()
         detachOutput()
+    }
+
+    func retryPlayback() async {
+        guard let currentSource else {
+            return
+        }
+
+        await startPlayback(source: currentSource)
     }
 
     nonisolated func mediaPlayerStateChanged(_ notification: Notification) {

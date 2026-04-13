@@ -21,6 +21,51 @@ public enum PlaylistLoaderError: Error, Equatable, LocalizedError {
     }
 }
 
+public struct RemotePlaylistError: Error, LocalizedError, Sendable {
+    public enum Kind: Sendable {
+        case network
+        case invalidStatus(code: Int)
+        case unsupportedEncoding
+        case invalidPlaylist
+    }
+
+    public let kind: Kind
+    public let url: URL
+    public let finalURL: URL?
+    public let responsePreview: String?
+    public let underlyingErrorDescription: String?
+
+    public init(
+        kind: Kind,
+        url: URL,
+        finalURL: URL? = nil,
+        responsePreview: String? = nil,
+        underlyingErrorDescription: String? = nil
+    ) {
+        self.kind = kind
+        self.url = url
+        self.finalURL = finalURL
+        self.responsePreview = responsePreview
+        self.underlyingErrorDescription = underlyingErrorDescription
+    }
+
+    public var errorDescription: String? {
+        let effectiveURL = (finalURL ?? url).absoluteString
+
+        switch kind {
+        case .network:
+            return "Could not download the playlist from \(effectiveURL). \(underlyingErrorDescription ?? "")".trimmingCharacters(in: .whitespaces)
+        case let .invalidStatus(code):
+            return "The playlist URL returned HTTP \(code) from \(effectiveURL)."
+        case .unsupportedEncoding:
+            return "The playlist response from \(effectiveURL) used an encoding this build could not read."
+        case .invalidPlaylist:
+            let preview = responsePreview?.isEmpty == false ? " First lines: \(responsePreview!)." : ""
+            return "The playlist response from \(effectiveURL) was not valid M3U.\(preview)"
+        }
+    }
+}
+
 public struct M3UPlaylistLoader: Sendable {
     public var session: URLSession
     public var parser: M3UParser
@@ -43,18 +88,65 @@ public struct M3UPlaylistLoader: Sendable {
         request.setValue("*/*", forHTTPHeaderField: "Accept")
         request.setValue("1xtream-m3u/1.0", forHTTPHeaderField: "User-Agent")
 
-        let (data, response) = try await session.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse, 200..<300 ~= httpResponse.statusCode else {
+        let data: Data
+        let response: URLResponse
+
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch {
+            throw RemotePlaylistError(kind: .network, url: remoteURL, underlyingErrorDescription: error.localizedDescription)
+        }
+
+        guard let httpResponse = response as? HTTPURLResponse else {
             throw PlaylistLoaderError.invalidResponse
+        }
+
+        guard 200..<300 ~= httpResponse.statusCode else {
+            throw RemotePlaylistError(
+                kind: .invalidStatus(code: httpResponse.statusCode),
+                url: remoteURL,
+                finalURL: httpResponse.url,
+                responsePreview: responsePreview(from: data)
+            )
         }
 
         guard let text = String(data: data, encoding: .utf8)
             ?? String(data: data, encoding: .utf16)
             ?? String(data: data, encoding: .isoLatin1) else {
-            throw PlaylistLoaderError.invalidResponse
+            throw RemotePlaylistError(kind: .unsupportedEncoding, url: remoteURL, finalURL: httpResponse.url)
         }
 
-        return try parser.parse(text: text, providerID: providerID)
+        do {
+            return try parser.parse(text: text, providerID: providerID)
+        } catch let error as M3UParserError {
+            throw RemotePlaylistError(
+                kind: .invalidPlaylist,
+                url: remoteURL,
+                finalURL: httpResponse.url,
+                responsePreview: responsePreview(from: text),
+                underlyingErrorDescription: error.localizedDescription
+            )
+        } catch {
+            throw error
+        }
+    }
+
+    private func responsePreview(from data: Data) -> String? {
+        (
+            String(data: data, encoding: .utf8)
+            ?? String(data: data, encoding: .utf16)
+            ?? String(data: data, encoding: .isoLatin1)
+        )
+        .map(responsePreview(from:))
+    }
+
+    private func responsePreview(from text: String) -> String {
+        text
+            .replacingOccurrences(of: "\u{FEFF}", with: "")
+            .split(whereSeparator: \.isNewline)
+            .prefix(3)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .joined(separator: " | ")
     }
 }
 

@@ -26,11 +26,9 @@ public struct M3UParser: Sendable {
             .split(separator: "\n", omittingEmptySubsequences: false)
             .map(String.init)
 
-        let firstMeaningfulLine = lines.first {
-            !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        }?.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        guard firstMeaningfulLine == "#EXTM3U" else {
+        guard let headerIndex = lines.firstIndex(where: {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("#EXTM3U")
+        }) else {
             throw M3UParserError.missingHeader
         }
 
@@ -39,7 +37,7 @@ public struct M3UParser: Sendable {
         var pendingMetadata: PendingEntry?
         var order = 0
 
-        for rawLine in lines.dropFirst() {
+        for rawLine in lines.dropFirst(headerIndex + 1) {
             let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
 
             guard !line.isEmpty else { continue }

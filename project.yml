@@ -24,8 +24,6 @@ targets:
       path: App/Info.plist
       properties:
         CFBundleDisplayName: 1xtream-m3u
-        CFBundleShortVersionString: 1.0
-        CFBundleVersion: 1
         LSRequiresIPhoneOS: true
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false

@@ -301,7 +301,7 @@ private struct ChannelDetailView: View {
                             HStack(spacing: 12) {
                                 Button {
                                     Task {
-                                        await playerController.play(source: source)
+                                        await playerController.startPlayback(source: source)
                                     }
                                 } label: {
                                     playerButton("Play Stream", systemImage: "play.fill", fill: true)

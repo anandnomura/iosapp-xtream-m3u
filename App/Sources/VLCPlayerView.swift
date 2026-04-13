@@ -1,9 +1,10 @@
 import MobileVLCKit
+import IPTVDomain
 import SwiftUI
 import UIKit
 
 @MainActor
-final class VLCPlayerController: NSObject, ObservableObject, VLCMediaPlayerDelegate {
+final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLCMediaPlayerDelegate {
     @Published var errorMessage: String?
     @Published var stateDescription = "Ready"
     @Published var probeSummary: String?
@@ -21,7 +22,7 @@ final class VLCPlayerController: NSObject, ObservableObject, VLCMediaPlayerDeleg
         mediaPlayer.delegate = self
     }
 
-    func play(source: PlaybackSource) async {
+    func startPlayback(source: PlaybackSource) async {
         errorMessage = nil
         probeSummary = nil
         stateDescription = "Opening stream..."
@@ -51,7 +52,7 @@ final class VLCPlayerController: NSObject, ObservableObject, VLCMediaPlayerDeleg
         stateDescription = "Stopped"
     }
 
-    func mediaPlayerStateChanged(_ notification: Notification) {
+    nonisolated func mediaPlayerStateChanged(_ notification: Notification) {
         let state = mediaPlayer.state
 
         DispatchQueue.main.async {

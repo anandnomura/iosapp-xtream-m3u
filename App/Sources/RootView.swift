@@ -827,7 +827,7 @@ private struct ChannelDetailView: View {
         onOpenItem(currentItem)
         if let source = currentItem.source {
             Task {
-                await playerController.startPlayback(source: source)
+                await playerController.startPlayback(source: source, title: currentItem.title)
             }
         }
     }
@@ -883,14 +883,26 @@ private struct FullScreenPlayerView: View {
         .onAppear {
             PlayerOrientationCoordinator.shared.requestLandscape()
             controlsVisible = true
+            MediaSessionCoordinator.shared.configureRemoteCommands(
+                onPlay: { playerController.resumePlayback() },
+                onPause: { playerController.pausePlayback() },
+                onTogglePlayPause: { playerController.togglePlayPause() },
+                onNextTrack: hasNextChannel ? {
+                    onNextChannel()
+                } : nil,
+                onPreviousTrack: hasPreviousChannel ? {
+                    onPreviousChannel()
+                } : nil
+            )
             if let source {
                 Task {
-                    await playerController.startPlayback(source: source)
+                    await playerController.startPlayback(source: source, title: title)
                 }
             }
         }
         .onDisappear {
             autoHideTask?.cancel()
+            MediaSessionCoordinator.shared.clearRemoteCommands()
             PlayerOrientationCoordinator.shared.requestPortrait()
         }
         .onReceive(playerController.$stateDescription) { _ in
@@ -942,6 +954,10 @@ private struct FullScreenPlayerView: View {
                     .background(.black.opacity(0.45), in: Circle())
             }
 
+            AirPlayRoutePicker()
+                .frame(width: 42, height: 42)
+                .background(.black.opacity(0.45), in: Circle())
+
             Spacer()
         }
         .padding(.horizontal, 20)
@@ -960,7 +976,7 @@ private struct FullScreenPlayerView: View {
                 .disabled(!hasPreviousChannel)
 
                 Button {
-                    Task { await playerController.retryPlayback() }
+                    primaryAction()
                 } label: {
                     fullscreenButton(primaryActionTitle, systemImage: primaryActionIcon, fill: true)
                 }
@@ -1042,11 +1058,47 @@ private struct FullScreenPlayerView: View {
     }
 
     private var primaryActionTitle: String {
-        playerController.errorMessage == nil ? "Play" : "Retry"
+        if playerController.errorMessage != nil {
+            return "Retry"
+        }
+
+        switch playerController.stateDescription {
+        case "Playing", "Buffering...", "Opening stream...", "Starting VLC...":
+            return "Pause"
+        case "Paused":
+            return "Play"
+        default:
+            return "Play"
+        }
     }
 
     private var primaryActionIcon: String {
-        playerController.errorMessage == nil ? "play.fill" : "arrow.clockwise"
+        if playerController.errorMessage != nil {
+            return "arrow.clockwise"
+        }
+
+        switch playerController.stateDescription {
+        case "Playing", "Buffering...", "Opening stream...", "Starting VLC...":
+            return "pause.fill"
+        default:
+            return "play.fill"
+        }
+    }
+
+    private func primaryAction() {
+        revealControls()
+
+        if playerController.errorMessage != nil {
+            Task { await playerController.retryPlayback() }
+            return
+        }
+
+        switch playerController.stateDescription {
+        case "Playing", "Buffering...", "Opening stream...", "Starting VLC...":
+            playerController.pausePlayback()
+        default:
+            playerController.resumePlayback()
+        }
     }
 }
 

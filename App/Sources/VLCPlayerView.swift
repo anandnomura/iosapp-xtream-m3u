@@ -13,6 +13,7 @@ final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLC
     @Published var stateDescription = "Ready"
     @Published var probeSummary: String?
     @Published private(set) var currentSource: PlaybackSource?
+    @Published private(set) var currentTitle = "1xtream-m3u"
 
     let mediaPlayer = VLCMediaPlayer()
     private let session: URLSession
@@ -37,11 +38,15 @@ final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLC
         NotificationCenter.default.removeObserver(self)
     }
 
-    func startPlayback(source: PlaybackSource) async {
+    func startPlayback(source: PlaybackSource, title: String? = nil) async {
         currentSource = source
+        if let title {
+            currentTitle = title
+        }
         errorMessage = nil
         probeSummary = nil
         stateDescription = "Opening stream..."
+        MediaSessionCoordinator.shared.updateNowPlaying(title: currentTitle, stateDescription: stateDescription)
 
         do {
             probeSummary = try await probe(url: source.url)
@@ -59,6 +64,7 @@ final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLC
         }
         mediaPlayer.media = media
         stateDescription = "Starting VLC..."
+        MediaSessionCoordinator.shared.updateNowPlaying(title: currentTitle, stateDescription: stateDescription)
         mediaPlayer.play()
     }
 
@@ -67,6 +73,7 @@ final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLC
         mediaPlayer.media = nil
         currentSource = nil
         stateDescription = "Stopped"
+        MediaSessionCoordinator.shared.clearNowPlaying()
     }
 
     func detachOutput() {
@@ -83,7 +90,28 @@ final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLC
             return
         }
 
-        await startPlayback(source: currentSource)
+        await startPlayback(source: currentSource, title: currentTitle)
+    }
+
+    func pausePlayback() {
+        mediaPlayer.pause()
+        stateDescription = "Paused"
+        MediaSessionCoordinator.shared.updateNowPlaying(title: currentTitle, stateDescription: stateDescription)
+    }
+
+    func resumePlayback() {
+        mediaPlayer.play()
+        stateDescription = "Starting VLC..."
+        MediaSessionCoordinator.shared.updateNowPlaying(title: currentTitle, stateDescription: stateDescription)
+    }
+
+    func togglePlayPause() {
+        switch mediaPlayer.state {
+        case .playing, .buffering, .opening:
+            pausePlayback()
+        default:
+            resumePlayback()
+        }
     }
 
     nonisolated func mediaPlayerStateChanged(_ notification: Notification) {
@@ -109,6 +137,7 @@ final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLC
             default:
                 self.stateDescription = "Ready"
             }
+            MediaSessionCoordinator.shared.updateNowPlaying(title: self.currentTitle, stateDescription: self.stateDescription)
         }
     }
 

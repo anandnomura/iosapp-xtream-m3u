@@ -22,6 +22,10 @@ These are the items being grouped together for the next round of testing:
 - `[~]` Source management moved out of the main landing flow
 - `[~]` Dedicated favorites and recents screens
 - `[~]` App-level search section
+- `[~]` AirPlay route picker in fullscreen player
+- `[~]` Lock screen / Control Center media metadata
+- `[~]` Remote play, pause, next, and previous command handling
+- `[~]` Primary player control behaves as play / pause / retry based on state
 
 ### How To Test Current Batch
 
@@ -78,6 +82,13 @@ These are the items being grouped together for the next round of testing:
 - Confirm it can search across all loaded channels.
 - Confirm the search section shows a useful empty or no-results state.
 
+10. Native media controls
+- Start playback and lock the phone.
+- Confirm the current channel title appears in the lock screen / Control Center media area.
+- Use play / pause from the lock screen or Control Center and confirm the player reacts.
+- If there is a next/previous channel available, confirm those controls switch channels.
+- Open fullscreen and confirm the AirPlay route picker is visible in the top bar.
+
 ## Phase 1: Stable Live TV MVP
 
 - `[x]` M3U URL loading
@@ -113,8 +124,8 @@ These are the items being grouped together for the next round of testing:
 - `[ ]` Visible buffering / reconnect feedback
 - `[ ]` Playback diagnostics that help with provider-specific failures
 - `[ ]` Audio/subtitle track controls where available
-- `[ ]` AirPlay / route picker
-- `[ ]` Now Playing / remote command integration
+- `[~]` AirPlay / route picker
+- `[~]` Now Playing / remote command integration
 
 ## Phase 4: Persistence and Security
 

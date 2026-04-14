@@ -386,7 +386,6 @@ private struct ChannelDetailView: View {
     @StateObject private var playerController = VLCPlayerController()
     @State private var isPresentingFullscreen = false
     @State private var hasAutoPresented = false
-    @State private var shouldResumeAfterFullscreenDismiss = false
     @State private var currentIndex: Int
     @Environment(\.dismiss) private var dismiss
 
@@ -499,17 +498,6 @@ private struct ChannelDetailView: View {
             playerController.stop()
             playerController.detachOutput()
         }
-        .onChange(of: isPresentingFullscreen) { _, isPresented in
-            guard !isPresented, shouldResumeAfterFullscreenDismiss else {
-                return
-            }
-
-            shouldResumeAfterFullscreenDismiss = false
-            Task {
-                try? await Task.sleep(for: .milliseconds(220))
-                await playerController.retryPlayback()
-            }
-        }
         .task {
             guard !playlist.isEmpty,
                   !hasAutoPresented,
@@ -529,8 +517,6 @@ private struct ChannelDetailView: View {
                 playerController: playerController
             ) {
                 dismissToBrowser()
-            } onMinimize: {
-                shouldResumeAfterFullscreenDismiss = true
             } onPreviousChannel: {
                 moveChannel(by: -1)
             } onNextChannel: {
@@ -599,7 +585,6 @@ private struct FullScreenPlayerView: View {
     let hasNextChannel: Bool
     @ObservedObject var playerController: VLCPlayerController
     let onBackToBrowser: () -> Void
-    let onMinimize: () -> Void
     let onPreviousChannel: () -> Void
     let onNextChannel: () -> Void
     @Environment(\.dismiss) private var dismiss
@@ -659,18 +644,6 @@ private struct FullScreenPlayerView: View {
 
     private var topBar: some View {
         HStack(spacing: 14) {
-            Button {
-                playerController.stop()
-                playerController.detachOutput()
-                onMinimize()
-                dismiss()
-            } label: {
-                Image(systemName: "pip.exit")
-                    .font(.headline.weight(.bold))
-                    .frame(width: 42, height: 42)
-                    .background(.black.opacity(0.45), in: Circle())
-            }
-
             Button {
                 playerController.stop()
                 playerController.detachOutput()

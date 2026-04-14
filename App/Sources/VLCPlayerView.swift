@@ -16,6 +16,7 @@ final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLC
 
     let mediaPlayer = VLCMediaPlayer()
     private let session: URLSession
+    private var bufferingRecoveryTask: Task<Void, Never>?
 
     override init() {
         let configuration = URLSessionConfiguration.default
@@ -34,6 +35,7 @@ final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLC
     }
 
     deinit {
+        bufferingRecoveryTask?.cancel()
         NotificationCenter.default.removeObserver(self)
     }
 
@@ -50,10 +52,15 @@ final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLC
         }
 
         let media = VLCMedia(url: source.url)
-        media.addOption(":network-caching=1000")
-        media.addOption(":live-caching=1000")
+        media.addOption(":network-caching=3000")
+        media.addOption(":live-caching=3000")
+        media.addOption(":file-caching=3000")
         media.addOption(":http-reconnect=true")
+        media.addOption(":http-continuous=true")
         media.addOption(":http-user-agent=1xtream-m3u/1.0")
+        media.addOption(":clock-jitter=0")
+        media.addOption(":clock-synchro=0")
+        media.addOption(":avcodec-hw=any")
         if let hint = source.containerHint?.lowercased(), hint == "ts" {
             media.addOption(":demux=ts")
         }
@@ -63,6 +70,7 @@ final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLC
     }
 
     func stop() {
+        bufferingRecoveryTask?.cancel()
         mediaPlayer.stop()
         mediaPlayer.media = nil
         currentSource = nil
@@ -90,11 +98,14 @@ final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLC
         let state = mediaPlayer.state
 
         DispatchQueue.main.async {
+            self.bufferingRecoveryTask?.cancel()
+
             switch state {
             case .opening:
                 self.stateDescription = "Opening stream..."
             case .buffering:
                 self.stateDescription = "Buffering..."
+                self.scheduleBufferingRecovery()
             case .playing:
                 self.stateDescription = "Playing"
             case .paused:
@@ -151,6 +162,24 @@ final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLC
         }
 
         return error.localizedDescription
+    }
+
+    private func scheduleBufferingRecovery() {
+        guard currentSource != nil else {
+            return
+        }
+
+        bufferingRecoveryTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(8))
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                guard let self,
+                      self.stateDescription == "Buffering..." else {
+                    return
+                }
+                Task { await self.retryPlayback() }
+            }
+        }
     }
 }
 

@@ -386,8 +386,7 @@ private struct ChannelDetailView: View {
     @StateObject private var playerController = VLCPlayerController()
     @State private var isPresentingFullscreen = false
     @State private var hasAutoPresented = false
-    @State private var isMiniPlayerActive = false
-    @State private var shouldResumeInMiniPlayer = false
+    @State private var shouldResumeInlinePlayback = false
     @State private var currentIndex: Int
     @Environment(\.dismiss) private var dismiss
 
@@ -423,38 +422,35 @@ private struct ChannelDetailView: View {
                         VStack(alignment: .leading, spacing: 14) {
                             videoSurfaceCard
 
-                            if !isMiniPlayerActive {
-                                HStack(spacing: 12) {
-                                    Button {
-                                        Task {
-                                            isMiniPlayerActive = true
-                                            await playerController.startPlayback(source: source)
-                                        }
-                                    } label: {
-                                        playerButton("Play Stream", systemImage: "play.fill", fill: true)
+                            HStack(spacing: 12) {
+                                Button {
+                                    Task {
+                                        await playerController.startPlayback(source: source)
                                     }
-
-                                    Button {
-                                        playerController.stop()
-                                    } label: {
-                                        playerButton("Stop", systemImage: "stop.fill", fill: false)
-                                    }
+                                } label: {
+                                    playerButton("Play Stream", systemImage: "play.fill", fill: true)
                                 }
 
                                 Button {
-                                    isPresentingFullscreen = true
+                                    playerController.stop()
                                 } label: {
-                                    HStack {
-                                        Image(systemName: "arrow.up.left.and.arrow.down.right")
-                                        Text("Open Full Screen")
-                                            .fontWeight(.bold)
-                                        Spacer()
-                                    }
-                                    .padding(.horizontal, 14)
-                                    .padding(.vertical, 14)
-                                    .foregroundStyle(.white)
-                                    .background(AppPalette.fieldFill, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                                    playerButton("Stop", systemImage: "stop.fill", fill: false)
                                 }
+                            }
+
+                            Button {
+                                isPresentingFullscreen = true
+                            } label: {
+                                HStack {
+                                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                                    Text("Open Full Screen")
+                                        .fontWeight(.bold)
+                                    Spacer()
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 14)
+                                .foregroundStyle(.white)
+                                .background(AppPalette.fieldFill, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                             }
 
                             StatCapsule(title: "Player", value: playerController.stateDescription)
@@ -508,9 +504,12 @@ private struct ChannelDetailView: View {
                 return
             }
 
-            if shouldResumeInMiniPlayer {
-                shouldResumeInMiniPlayer = false
-                isMiniPlayerActive = true
+            if shouldResumeInlinePlayback {
+                shouldResumeInlinePlayback = false
+                Task {
+                    try? await Task.sleep(for: .milliseconds(180))
+                    await playerController.retryPlayback()
+                }
             }
         }
         .task {
@@ -521,7 +520,6 @@ private struct ChannelDetailView: View {
             }
 
             hasAutoPresented = true
-            isMiniPlayerActive = true
             isPresentingFullscreen = true
         }
         .fullScreenCover(isPresented: $isPresentingFullscreen) {
@@ -534,7 +532,7 @@ private struct ChannelDetailView: View {
             ) {
                 dismissToBrowser()
             } onMinimize: {
-                shouldResumeInMiniPlayer = true
+                shouldResumeInlinePlayback = true
             } onPreviousChannel: {
                 moveChannel(by: -1)
             } onNextChannel: {
@@ -571,38 +569,6 @@ private struct ChannelDetailView: View {
                 }
             }
             .frame(minHeight: 230)
-        } else if isMiniPlayerActive {
-            VStack(alignment: .leading, spacing: 12) {
-                VLCVideoSurfaceView(mediaPlayer: playerController.mediaPlayer)
-                    .frame(minHeight: 210)
-                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                    .onAppear {
-                        if let source = sourceOrNil {
-                            Task {
-                                try? await Task.sleep(for: .milliseconds(220))
-                                await playerController.startPlayback(source: source)
-                            }
-                        }
-                    }
-
-                HStack(spacing: 12) {
-                    Button {
-                        shouldResumeInMiniPlayer = false
-                        isPresentingFullscreen = true
-                    } label: {
-                        playerButton("Maximize", systemImage: "arrow.up.left.and.arrow.down.right", fill: true)
-                    }
-
-                    Button {
-                        shouldResumeInMiniPlayer = false
-                        playerController.stop()
-                        playerController.detachOutput()
-                        isMiniPlayerActive = false
-                    } label: {
-                        playerButton("Stop", systemImage: "stop.fill", fill: false)
-                    }
-                }
-            }
         } else {
             VLCVideoSurfaceView(mediaPlayer: playerController.mediaPlayer)
                 .frame(minHeight: 230)
@@ -634,8 +600,6 @@ private struct ChannelDetailView: View {
         }
 
         currentIndex = nextIndex
-        shouldResumeInMiniPlayer = false
-        isMiniPlayerActive = true
         if let source = currentItem.source {
             Task {
                 await playerController.startPlayback(source: source)
@@ -646,7 +610,6 @@ private struct ChannelDetailView: View {
     private func dismissToBrowser() {
         playerController.stop()
         playerController.detachOutput()
-        isMiniPlayerActive = false
         dismiss()
     }
 }

@@ -652,7 +652,7 @@ private struct FullScreenPlayerView: View {
                     onBackToBrowser()
                 }
             } label: {
-                Image(systemName: "chevron.backward")
+                Image(systemName: "arrow.backward")
                     .font(.headline.weight(.bold))
                     .frame(width: 42, height: 42)
                     .background(.black.opacity(0.45), in: Circle())

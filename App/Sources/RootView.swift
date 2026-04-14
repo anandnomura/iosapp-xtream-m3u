@@ -1107,6 +1107,46 @@ private struct FullScreenPlayerView: View {
                     .foregroundStyle(.white.opacity(0.8))
             }
 
+            if !playerController.audioTrackOptions.isEmpty || !playerController.subtitleTrackOptions.isEmpty {
+                HStack(spacing: 12) {
+                    if !playerController.audioTrackOptions.isEmpty {
+                        Menu {
+                            ForEach(playerController.audioTrackOptions) { option in
+                                Button {
+                                    playerController.selectAudioTrack(option)
+                                    revealControls()
+                                } label: {
+                                    Label(
+                                        option.name,
+                                        systemImage: playerController.selectedAudioTrackID == option.id ? "checkmark" : "speaker.wave.2"
+                                    )
+                                }
+                            }
+                        } label: {
+                            fullscreenButton("Audio", systemImage: "speaker.wave.2.fill", fill: false)
+                        }
+                    }
+
+                    if !playerController.subtitleTrackOptions.isEmpty {
+                        Menu {
+                            ForEach(playerController.subtitleTrackOptions) { option in
+                                Button {
+                                    playerController.selectSubtitleTrack(option)
+                                    revealControls()
+                                } label: {
+                                    Label(
+                                        option.name,
+                                        systemImage: playerController.selectedSubtitleTrackID == option.id ? "checkmark" : "captions.bubble"
+                                    )
+                                }
+                            }
+                        } label: {
+                            fullscreenButton("Subtitles", systemImage: "captions.bubble.fill", fill: false)
+                        }
+                    }
+                }
+            }
+
             if let transportSummary = playerController.transportSummary {
                 Text(transportSummary)
                     .font(.caption)

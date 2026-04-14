@@ -31,6 +31,8 @@ These are the items being grouped together for the next round of testing:
 - `[~]` In-player diagnostics panel for stream host, container, probe, and reconnect state
 - `[~]` Xtream passwords moved to Keychain-backed storage
 - `[~]` Per-profile last played channel and last selected group memory
+- `[~]` SwiftData container groundwork for long-term profile/favorites/recents migration
+- `[~]` Audio and subtitle track controls in fullscreen player
 
 ### How To Test Current Batch
 
@@ -119,6 +121,17 @@ These are the items being grouped together for the next round of testing:
 - Confirm the profile also offers a quick way to reopen the last visited group.
 - Switch to another provider profile and confirm each profile keeps its own last played channel / last group memory.
 
+15. Track controls
+- Start a stream that exposes multiple audio or subtitle tracks if possible.
+- Open fullscreen and confirm `Audio` and/or `Subtitles` menus appear when tracks are available.
+- Select a different track and confirm playback continues.
+- Confirm the selected track shows a checkmark when the menu is reopened.
+
+16. SwiftData groundwork
+- Launch the app after the update and confirm it still opens normally.
+- Load a provider, browse channels, and confirm existing persistence still works.
+- This step is mainly a regression check that the new SwiftData container does not break the current app flow.
+
 ## Phase 1: Stable Live TV MVP
 
 - `[x]` M3U URL loading
@@ -153,13 +166,13 @@ These are the items being grouped together for the next round of testing:
 - `[~]` Stream retry / reconnect policy
 - `[~]` Visible buffering / reconnect feedback
 - `[~]` Playback diagnostics that help with provider-specific failures
-- `[ ]` Audio/subtitle track controls where available
+- `[~]` Audio/subtitle track controls where available
 - `[~]` AirPlay / route picker
 - `[~]` Now Playing / remote command integration
 
 ## Phase 4: Persistence and Security
 
-- `[ ]` Move profile and cache storage to SwiftData
+- `[~]` Move profile and cache storage to SwiftData
 - `[~]` Move provider credentials to Keychain
 - `[~]` Persist last played channel per profile
 - `[~]` Persist selected group and browser position

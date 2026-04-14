@@ -8,12 +8,22 @@ extension Notification.Name {
 }
 
 @MainActor
+struct PlayerTrackOption: Identifiable, Equatable {
+    let id: Int
+    let name: String
+}
+
+@MainActor
 final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLCMediaPlayerDelegate {
     @Published var errorMessage: String?
     @Published var stateDescription = "Ready"
     @Published var probeSummary: String?
     @Published var transportSummary: String?
     @Published private(set) var reconnectAttemptCount = 0
+    @Published private(set) var audioTrackOptions: [PlayerTrackOption] = []
+    @Published private(set) var subtitleTrackOptions: [PlayerTrackOption] = []
+    @Published private(set) var selectedAudioTrackID: Int?
+    @Published private(set) var selectedSubtitleTrackID: Int?
     @Published private(set) var currentSource: PlaybackSource?
     @Published private(set) var currentTitle = "1xtream-m3u"
 
@@ -81,6 +91,10 @@ final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLC
         stateDescription = "Stopped"
         transportSummary = nil
         reconnectAttemptCount = 0
+        audioTrackOptions = []
+        subtitleTrackOptions = []
+        selectedAudioTrackID = nil
+        selectedSubtitleTrackID = nil
         bufferingRecoveryTask?.cancel()
         MediaSessionCoordinator.shared.clearNowPlaying()
     }
@@ -124,6 +138,16 @@ final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLC
         }
     }
 
+    func selectAudioTrack(_ option: PlayerTrackOption) {
+        mediaPlayer.currentAudioTrackIndex = option.id
+        selectedAudioTrackID = option.id
+    }
+
+    func selectSubtitleTrack(_ option: PlayerTrackOption) {
+        mediaPlayer.currentVideoSubTitleIndex = option.id
+        selectedSubtitleTrackID = option.id
+    }
+
     nonisolated func mediaPlayerStateChanged(_ notification: Notification) {
         let state = mediaPlayer.state
 
@@ -140,6 +164,7 @@ final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLC
                 self.transportSummary = nil
                 self.reconnectAttemptCount = 0
                 self.bufferingRecoveryTask?.cancel()
+                self.refreshTrackOptions()
             case .paused:
                 self.stateDescription = "Paused"
                 self.bufferingRecoveryTask?.cancel()
@@ -212,6 +237,37 @@ final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLC
 
         try? await Task.sleep(for: .seconds(1))
         await startPlayback(source: currentSource, title: currentTitle)
+    }
+
+    private func refreshTrackOptions() {
+        audioTrackOptions = zipTrackOptions(names: mediaPlayer.audioTrackNames, indexes: mediaPlayer.audioTrackIndexes)
+        subtitleTrackOptions = zipTrackOptions(names: mediaPlayer.videoSubTitlesNames, indexes: mediaPlayer.videoSubTitlesIndexes)
+        selectedAudioTrackID = mediaPlayer.currentAudioTrackIndex
+        selectedSubtitleTrackID = mediaPlayer.currentVideoSubTitleIndex
+    }
+
+    private func zipTrackOptions(names: [Any]?, indexes: [Any]?) -> [PlayerTrackOption] {
+        guard let names, let indexes else {
+            return []
+        }
+
+        let pairs = zip(names, indexes)
+        return pairs.compactMap { nameAny, indexAny in
+            let name = String(describing: nameAny)
+            let trackID: Int
+
+            if let number = indexAny as? NSNumber {
+                trackID = number.intValue
+            } else if let intValue = indexAny as? Int {
+                trackID = intValue
+            } else if let stringValue = indexAny as? String, let parsed = Int(stringValue) {
+                trackID = parsed
+            } else {
+                return nil
+            }
+
+            return PlayerTrackOption(id: trackID, name: name)
+        }
     }
 
     private func probe(url: URL) async throws -> String {

@@ -1130,8 +1130,6 @@ private struct ChannelDetailView: View {
     }
 
     private func dismissToBrowser() {
-        playerController.stop()
-        playerController.detachOutput()
         dismiss()
     }
 }
@@ -1152,6 +1150,7 @@ private struct FullScreenPlayerView: View {
     @State private var controlsVisible = true
     @State private var diagnosticsVisible = false
     @State private var autoHideTask: Task<Void, Never>?
+    @State private var lastStateAllowedAutoHide = false
 
     var body: some View {
         ZStack {
@@ -1191,6 +1190,7 @@ private struct FullScreenPlayerView: View {
         .statusBarHidden(true)
         .onAppear {
             controlsVisible = true
+            lastStateAllowedAutoHide = shouldAutoHideControls
             MediaSessionCoordinator.shared.configureRemoteCommands(
                 onPlay: { playerController.resumePlayback() },
                 onPause: { playerController.pausePlayback() },
@@ -1207,6 +1207,8 @@ private struct FullScreenPlayerView: View {
                     await playerController.startPlayback(source: source, title: title)
                 }
             }
+
+            scheduleAutoHideIfNeeded(forceRestart: true)
         }
         .onDisappear {
             autoHideTask?.cancel()
@@ -1214,21 +1216,26 @@ private struct FullScreenPlayerView: View {
         }
         .onReceive(playerController.$stateDescription) { _ in
             if shouldAutoHideControls {
-                revealControls()
+                if !lastStateAllowedAutoHide {
+                    scheduleAutoHideIfNeeded(forceRestart: true)
+                } else if controlsVisible, autoHideTask == nil {
+                    scheduleAutoHideIfNeeded()
+                }
             } else {
                 autoHideTask?.cancel()
+                autoHideTask = nil
                 withAnimation(.easeInOut(duration: 0.2)) {
                     controlsVisible = true
                 }
             }
+
+            lastStateAllowedAutoHide = shouldAutoHideControls
         }
     }
 
     private var topBar: some View {
         HStack(spacing: 14) {
             Button {
-                playerController.stop()
-                playerController.detachOutput()
                 Task { @MainActor in
                     onBackToBrowser()
                 }
@@ -1492,14 +1499,33 @@ private struct FullScreenPlayerView: View {
         }
 
         autoHideTask?.cancel()
+        autoHideTask = nil
+        scheduleAutoHideIfNeeded(forceRestart: true)
+    }
+
+    private func scheduleAutoHideIfNeeded(forceRestart: Bool = false) {
         guard shouldAutoHideControls else {
             return
         }
 
+        if forceRestart {
+            autoHideTask?.cancel()
+            autoHideTask = nil
+        }
+
+        guard autoHideTask == nil else {
+            return
+        }
+
         autoHideTask = Task {
-            try? await Task.sleep(for: .seconds(10))
+            try? await Task.sleep(for: .seconds(7))
             guard !Task.isCancelled else { return }
             await MainActor.run {
+                autoHideTask = nil
+                guard shouldAutoHideControls else {
+                    return
+                }
+
                 withAnimation(.easeInOut(duration: 0.25)) {
                     controlsVisible = false
                 }
@@ -1508,7 +1534,12 @@ private struct FullScreenPlayerView: View {
     }
 
     private var shouldAutoHideControls: Bool {
-        playerController.stateDescription == "Playing" || playerController.stateDescription == "Buffering..."
+        switch playerController.stateDescription {
+        case "Playing", "Buffering...", "Opening stream...", "Starting VLC...", "Reconnecting...":
+            return true
+        default:
+            return false
+        }
     }
 
     private var primaryActionTitle: String {

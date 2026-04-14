@@ -13,6 +13,55 @@ struct PlayerTrackOption: Identifiable, Equatable {
     let name: String
 }
 
+private struct StreamPlaybackProfile {
+    let label: String
+    let networkCachingMs: Int
+    let liveCachingMs: Int
+    let shouldForceTSDemux: Bool
+    let bufferingRecoveryTimeoutSeconds: Double?
+    let maxReconnectAttempts: Int
+    let retryDelayMilliseconds: Int
+
+    static func forSource(_ source: PlaybackSource) -> StreamPlaybackProfile {
+        let hint = source.containerHint?.lowercased()
+        let urlString = source.url.absoluteString.lowercased()
+
+        if hint == "m3u8" || source.url.pathExtension.lowercased() == "m3u8" || urlString.contains(".m3u8") {
+            return StreamPlaybackProfile(
+                label: "HLS",
+                networkCachingMs: 350,
+                liveCachingMs: 350,
+                shouldForceTSDemux: false,
+                bufferingRecoveryTimeoutSeconds: nil,
+                maxReconnectAttempts: 1,
+                retryDelayMilliseconds: 150
+            )
+        }
+
+        if hint == "ts" {
+            return StreamPlaybackProfile(
+                label: "MPEG-TS",
+                networkCachingMs: 1600,
+                liveCachingMs: 1600,
+                shouldForceTSDemux: true,
+                bufferingRecoveryTimeoutSeconds: 9,
+                maxReconnectAttempts: 2,
+                retryDelayMilliseconds: 500
+            )
+        }
+
+        return StreamPlaybackProfile(
+            label: "Standard",
+            networkCachingMs: 900,
+            liveCachingMs: 900,
+            shouldForceTSDemux: false,
+            bufferingRecoveryTimeoutSeconds: 6,
+            maxReconnectAttempts: 2,
+            retryDelayMilliseconds: 350
+        )
+    }
+}
+
 @MainActor
 final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLCMediaPlayerDelegate {
     @Published var errorMessage: String?
@@ -30,7 +79,9 @@ final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLC
     let mediaPlayer = VLCMediaPlayer()
     private let session: URLSession
     private var bufferingRecoveryTask: Task<Void, Never>?
-    private let maxReconnectAttempts = 1
+    private var probeTask: Task<Void, Never>?
+    private var playbackSessionID = UUID()
+    private var currentPlaybackProfile: StreamPlaybackProfile?
 
     override init() {
         let configuration = URLSessionConfiguration.default
@@ -53,41 +104,61 @@ final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLC
     }
 
     func startPlayback(source: PlaybackSource, title: String? = nil) async {
+        playbackSessionID = UUID()
+        let sessionID = playbackSessionID
         currentSource = source
         if let title {
             currentTitle = title
         }
         errorMessage = nil
         probeSummary = nil
-        transportSummary = nil
+        let profile = StreamPlaybackProfile.forSource(source)
+        currentPlaybackProfile = profile
+        transportSummary = "Profile: \(profile.label) • Cache \(profile.liveCachingMs)ms"
         stateDescription = "Opening stream..."
         MediaSessionCoordinator.shared.updateNowPlaying(title: currentTitle, stateDescription: stateDescription)
         bufferingRecoveryTask?.cancel()
-
-        do {
-            probeSummary = try await probe(url: source.url)
-        } catch {
-            probeSummary = "Probe warning: \(friendlyProbeMessage(for: error, url: source.url))"
-        }
+        probeTask?.cancel()
 
         let media = VLCMedia(url: source.url)
-        media.addOption(":network-caching=1200")
-        media.addOption(":live-caching=1200")
+        media.addOption(":network-caching=\(profile.networkCachingMs)")
+        media.addOption(":live-caching=\(profile.liveCachingMs)")
         media.addOption(":http-reconnect=true")
         media.addOption(":http-user-agent=1xtream-m3u/1.0")
-        if let hint = source.containerHint?.lowercased(), hint == "ts" {
+        if profile.shouldForceTSDemux {
             media.addOption(":demux=ts")
         }
         mediaPlayer.media = media
         stateDescription = "Starting VLC..."
         MediaSessionCoordinator.shared.updateNowPlaying(title: currentTitle, stateDescription: stateDescription)
         mediaPlayer.play()
+
+        probeTask = Task { [weak self] in
+            guard let self else { return }
+
+            let probeResult: String
+            do {
+                probeResult = try await self.probe(url: source.url)
+            } catch {
+                probeResult = "Probe warning: \(self.friendlyProbeMessage(for: error, url: source.url))"
+            }
+
+            await MainActor.run {
+                guard self.playbackSessionID == sessionID,
+                      self.currentSource?.url == source.url else {
+                    return
+                }
+
+                self.probeSummary = probeResult
+            }
+        }
     }
 
     func stop() {
         mediaPlayer.stop()
         mediaPlayer.media = nil
         currentSource = nil
+        currentPlaybackProfile = nil
         stateDescription = "Stopped"
         transportSummary = nil
         reconnectAttemptCount = 0
@@ -96,6 +167,7 @@ final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLC
         selectedAudioTrackID = nil
         selectedSubtitleTrackID = nil
         bufferingRecoveryTask?.cancel()
+        probeTask?.cancel()
         MediaSessionCoordinator.shared.clearNowPlaying()
     }
 
@@ -161,7 +233,11 @@ final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLC
                 self.scheduleBufferingRecoveryIfNeeded()
             case .playing:
                 self.stateDescription = "Playing"
-                self.transportSummary = nil
+                if let profile = self.currentPlaybackProfile {
+                    self.transportSummary = "Profile: \(profile.label)"
+                } else {
+                    self.transportSummary = nil
+                }
                 self.reconnectAttemptCount = 0
                 self.bufferingRecoveryTask?.cancel()
                 self.refreshTrackOptions()
@@ -178,11 +254,11 @@ final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLC
                 self.bufferingRecoveryTask?.cancel()
             case .error:
                 self.bufferingRecoveryTask?.cancel()
-                if self.reconnectAttemptCount < self.maxReconnectAttempts,
+                if self.reconnectAttemptCount < self.activeMaxReconnectAttempts,
                    self.currentSource != nil {
                     self.reconnectAttemptCount += 1
                     self.stateDescription = "Reconnecting..."
-                    self.transportSummary = "Playback stalled. Retrying stream (\(self.reconnectAttemptCount)/\(self.maxReconnectAttempts))."
+                    self.transportSummary = "Playback error. Retrying stream (\(self.reconnectAttemptCount)/\(self.activeMaxReconnectAttempts)) using \(self.currentPlaybackProfile?.label ?? "default") profile."
                     Task {
                         await self.retryCurrentStreamAfterDelay()
                     }
@@ -206,22 +282,28 @@ final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLC
             return
         }
 
+        guard let timeoutSeconds = currentPlaybackProfile?.bufferingRecoveryTimeoutSeconds else {
+            bufferingRecoveryTask?.cancel()
+            bufferingRecoveryTask = nil
+            return
+        }
+
         bufferingRecoveryTask?.cancel()
         bufferingRecoveryTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(8))
+            try? await Task.sleep(for: .seconds(timeoutSeconds))
             guard !Task.isCancelled else { return }
             await MainActor.run {
                 guard let self,
                       self.currentSource != nil,
                       (self.stateDescription == "Buffering..." || self.stateDescription == "Opening stream..."),
-                      self.reconnectAttemptCount < self.maxReconnectAttempts else {
+                      self.reconnectAttemptCount < self.activeMaxReconnectAttempts else {
                     return
                 }
 
                 let stalledState = self.stateDescription
                 self.reconnectAttemptCount += 1
                 self.stateDescription = "Reconnecting..."
-                self.transportSummary = "The stream stayed in \(stalledState.lowercased()) too long. Retrying (\(self.reconnectAttemptCount)/\(self.maxReconnectAttempts))."
+                self.transportSummary = "The stream stayed in \(stalledState.lowercased()) too long. Retrying (\(self.reconnectAttemptCount)/\(self.activeMaxReconnectAttempts)) with \(self.currentPlaybackProfile?.label ?? "default") profile."
 
                 Task {
                     await self.retryCurrentStreamAfterDelay()
@@ -235,8 +317,13 @@ final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLC
             return
         }
 
-        try? await Task.sleep(for: .seconds(1))
+        let retryDelay = currentPlaybackProfile?.retryDelayMilliseconds ?? 350
+        try? await Task.sleep(for: .milliseconds(retryDelay))
         await startPlayback(source: currentSource, title: currentTitle)
+    }
+
+    private var activeMaxReconnectAttempts: Int {
+        currentPlaybackProfile?.maxReconnectAttempts ?? 1
     }
 
     private func refreshTrackOptions() {
@@ -330,6 +417,7 @@ struct VLCVideoSurfaceView: UIViewRepresentable {
     }
 
     static func dismantleUIView(_ uiView: UIView, coordinator: ()) {
-        uiView.layer.sublayers?.removeAll()
+        // VLC manages its own rendering subviews/layers. Manual teardown here can race
+        // with VLCKit's cleanup and cause simulator crashes while removing the video view.
     }
 }

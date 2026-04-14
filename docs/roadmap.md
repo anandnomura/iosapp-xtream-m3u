@@ -116,6 +116,7 @@ These are the items being grouped together for the next round of testing:
 - Play a channel from that group, then return to the `Source` section.
 - Confirm the profile shows a `Resume Last Channel` card.
 - Tap it and confirm it opens the last played channel directly.
+- Confirm the profile also offers a quick way to reopen the last visited group.
 - Switch to another provider profile and confirm each profile keeps its own last played channel / last group memory.
 
 ## Phase 1: Stable Live TV MVP

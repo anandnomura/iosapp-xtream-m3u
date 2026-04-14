@@ -536,6 +536,25 @@ struct RootView: View {
                     .buttonStyle(.plain)
                 }
 
+                if let lastGroup = viewModel.lastSelectedGroup(for: profile) {
+                    NavigationLink {
+                        ChannelListView(
+                            group: lastGroup,
+                            items: viewModel.items(in: lastGroup),
+                            isFavorite: viewModel.isFavorite,
+                            onToggleFavorite: viewModel.toggleFavorite,
+                            onOpenItem: viewModel.registerRecent,
+                            onOpenGroup: viewModel.recordGroupVisit
+                        )
+                    } label: {
+                        ResumeCard(
+                            title: "Open Last Group",
+                            subtitle: lastGroup.name
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+
                 HStack(spacing: 12) {
                     Button {
                         Task { await viewModel.refreshActiveProfile() }
@@ -1298,6 +1317,11 @@ private struct SavedProfileCard: View {
     private var summaryText: String {
         if let lastPlayed = record.lastPlayedItemTitle {
             return "Resume \(lastPlayed)"
+        }
+
+        if let lastGroup = record.lastSelectedGroupID,
+           let groupName = record.groups.first(where: { $0.id == lastGroup })?.name {
+            return "Last group: \(groupName)"
         }
 
         if let lastUpdatedAt = record.lastUpdatedAt {

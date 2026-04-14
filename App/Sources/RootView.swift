@@ -639,6 +639,7 @@ private struct FullScreenPlayerView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var controlsVisible = true
     @State private var autoHideTask: Task<Void, Never>?
+    @State private var shouldTearDownOnDisappear = true
 
     var body: some View {
         ZStack {
@@ -646,12 +647,13 @@ private struct FullScreenPlayerView: View {
 
             VLCVideoSurfaceView(mediaPlayer: playerController.mediaPlayer)
                 .ignoresSafeArea()
-            Color.clear
-                .contentShape(Rectangle())
+            Rectangle()
+                .fill(Color.clear)
                 .ignoresSafeArea()
-                .onTapGesture {
+                .contentShape(Rectangle())
+                .highPriorityGesture(TapGesture().onEnded {
                     revealControls()
-                }
+                })
 
             if controlsVisible {
                 VStack(spacing: 0) {
@@ -676,7 +678,9 @@ private struct FullScreenPlayerView: View {
         }
         .onDisappear {
             autoHideTask?.cancel()
-            playerController.detachOutput()
+            if shouldTearDownOnDisappear {
+                playerController.detachOutput()
+            }
             PlayerOrientationCoordinator.shared.requestPortrait()
         }
         .onReceive(playerController.$stateDescription) { _ in
@@ -694,6 +698,7 @@ private struct FullScreenPlayerView: View {
     private var topBar: some View {
         HStack(spacing: 14) {
             Button {
+                shouldTearDownOnDisappear = false
                 onMinimize()
                 dismiss()
             } label: {
@@ -704,6 +709,7 @@ private struct FullScreenPlayerView: View {
             }
 
             Button {
+                shouldTearDownOnDisappear = true
                 playerController.stop()
                 playerController.detachOutput()
                 dismiss()
@@ -751,6 +757,7 @@ private struct FullScreenPlayerView: View {
                 }
 
                 Button {
+                    shouldTearDownOnDisappear = true
                     playerController.stop()
                     playerController.detachOutput()
                 } label: {

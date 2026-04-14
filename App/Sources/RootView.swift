@@ -387,6 +387,7 @@ private struct ChannelDetailView: View {
     @State private var isPresentingFullscreen = false
     @State private var hasAutoPresented = false
     @State private var isMiniPlayerActive = false
+    @State private var shouldResumeInMiniPlayer = false
     @State private var currentIndex: Int
     @Environment(\.dismiss) private var dismiss
 
@@ -425,6 +426,7 @@ private struct ChannelDetailView: View {
                             HStack(spacing: 12) {
                                 Button {
                                     Task {
+                                        isMiniPlayerActive = true
                                         await playerController.startPlayback(source: source)
                                     }
                                 } label: {
@@ -438,19 +440,21 @@ private struct ChannelDetailView: View {
                                 }
                             }
 
-                            Button {
-                                isPresentingFullscreen = true
-                            } label: {
-                                HStack {
-                                    Image(systemName: "arrow.up.left.and.arrow.down.right")
-                                    Text("Open Full Screen")
-                                        .fontWeight(.bold)
-                                    Spacer()
+                            if !isMiniPlayerActive {
+                                Button {
+                                    isPresentingFullscreen = true
+                                } label: {
+                                    HStack {
+                                        Image(systemName: "arrow.up.left.and.arrow.down.right")
+                                        Text("Open Full Screen")
+                                            .fontWeight(.bold)
+                                        Spacer()
+                                    }
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 14)
+                                    .foregroundStyle(.white)
+                                    .background(AppPalette.fieldFill, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                                 }
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 14)
-                                .foregroundStyle(.white)
-                                .background(AppPalette.fieldFill, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                             }
 
                             StatCapsule(title: "Player", value: playerController.stateDescription)
@@ -499,6 +503,22 @@ private struct ChannelDetailView: View {
             playerController.stop()
             playerController.detachOutput()
         }
+        .onChange(of: isPresentingFullscreen) { _, isPresented in
+            guard !isPresented else {
+                return
+            }
+
+            if shouldResumeInMiniPlayer {
+                shouldResumeInMiniPlayer = false
+                isMiniPlayerActive = true
+                if let source = sourceOrNil {
+                    Task {
+                        try? await Task.sleep(for: .milliseconds(250))
+                        await playerController.startPlayback(source: source)
+                    }
+                }
+            }
+        }
         .task {
             guard !playlist.isEmpty,
                   !hasAutoPresented,
@@ -520,7 +540,7 @@ private struct ChannelDetailView: View {
             ) {
                 dismissToBrowser()
             } onMinimize: {
-                isMiniPlayerActive = true
+                shouldResumeInMiniPlayer = true
             } onPreviousChannel: {
                 moveChannel(by: -1)
             } onNextChannel: {
@@ -565,12 +585,14 @@ private struct ChannelDetailView: View {
 
                 HStack(spacing: 12) {
                     Button {
+                        shouldResumeInMiniPlayer = false
                         isPresentingFullscreen = true
                     } label: {
-                        playerButton("Expand Player", systemImage: "arrow.up.left.and.arrow.down.right", fill: true)
+                        playerButton("Maximize", systemImage: "arrow.up.left.and.arrow.down.right", fill: true)
                     }
 
                     Button {
+                        shouldResumeInMiniPlayer = false
                         playerController.stop()
                         playerController.detachOutput()
                         isMiniPlayerActive = false
@@ -610,6 +632,7 @@ private struct ChannelDetailView: View {
         }
 
         currentIndex = nextIndex
+        shouldResumeInMiniPlayer = false
         isMiniPlayerActive = true
         if let source = currentItem.source {
             Task {
@@ -639,7 +662,6 @@ private struct FullScreenPlayerView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var controlsVisible = true
     @State private var autoHideTask: Task<Void, Never>?
-    @State private var shouldTearDownOnDisappear = true
 
     var body: some View {
         ZStack {
@@ -678,9 +700,7 @@ private struct FullScreenPlayerView: View {
         }
         .onDisappear {
             autoHideTask?.cancel()
-            if shouldTearDownOnDisappear {
-                playerController.detachOutput()
-            }
+            playerController.detachOutput()
             PlayerOrientationCoordinator.shared.requestPortrait()
         }
         .onReceive(playerController.$stateDescription) { _ in
@@ -698,7 +718,8 @@ private struct FullScreenPlayerView: View {
     private var topBar: some View {
         HStack(spacing: 14) {
             Button {
-                shouldTearDownOnDisappear = false
+                playerController.stop()
+                playerController.detachOutput()
                 onMinimize()
                 dismiss()
             } label: {
@@ -709,7 +730,6 @@ private struct FullScreenPlayerView: View {
             }
 
             Button {
-                shouldTearDownOnDisappear = true
                 playerController.stop()
                 playerController.detachOutput()
                 dismiss()
@@ -757,7 +777,6 @@ private struct FullScreenPlayerView: View {
                 }
 
                 Button {
-                    shouldTearDownOnDisappear = true
                     playerController.stop()
                     playerController.detachOutput()
                 } label: {

@@ -551,6 +551,31 @@ struct RootView: View {
         .listRowSeparator(.hidden)
     }
 
+    private var complianceSection: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 10) {
+                Label("Content Disclaimer", systemImage: "checkmark.shield")
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(.white)
+
+                Text("This app does not provide channels, playlists, subscriptions, or media content.")
+                    .font(.subheadline)
+                    .foregroundStyle(.white)
+
+                Text("It only plays streams and playlist sources supplied by the user.")
+                    .font(.subheadline)
+                    .foregroundStyle(AppPalette.secondaryText)
+
+                Text("Use only content and services you are legally authorized to access.")
+                    .font(.caption)
+                    .foregroundStyle(AppPalette.secondaryText)
+            }
+            .cardStyle(background: AppPalette.card)
+        }
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+    }
+
     private func issueSection(message: String) -> some View {
         Section {
             VStack(alignment: .leading, spacing: 8) {
@@ -931,6 +956,7 @@ struct RootView: View {
 
         case .source:
             sourceSection
+            complianceSection
             if let profile = viewModel.activeProfile {
                 compactLoadedSourceSection(profile: profile)
             }

@@ -386,7 +386,6 @@ private struct ChannelDetailView: View {
     @StateObject private var playerController = VLCPlayerController()
     @State private var isPresentingFullscreen = false
     @State private var hasAutoPresented = false
-    @State private var shouldResumeInlinePlayback = false
     @State private var currentIndex: Int
     @Environment(\.dismiss) private var dismiss
 
@@ -499,19 +498,6 @@ private struct ChannelDetailView: View {
             playerController.stop()
             playerController.detachOutput()
         }
-        .onChange(of: isPresentingFullscreen) { _, isPresented in
-            guard !isPresented else {
-                return
-            }
-
-            if shouldResumeInlinePlayback {
-                shouldResumeInlinePlayback = false
-                Task {
-                    try? await Task.sleep(for: .milliseconds(180))
-                    await playerController.retryPlayback()
-                }
-            }
-        }
         .task {
             guard !playlist.isEmpty,
                   !hasAutoPresented,
@@ -531,8 +517,6 @@ private struct ChannelDetailView: View {
                 playerController: playerController
             ) {
                 dismissToBrowser()
-            } onMinimize: {
-                shouldResumeInlinePlayback = true
             } onPreviousChannel: {
                 moveChannel(by: -1)
             } onNextChannel: {
@@ -621,7 +605,6 @@ private struct FullScreenPlayerView: View {
     let hasNextChannel: Bool
     @ObservedObject var playerController: VLCPlayerController
     let onBackToBrowser: () -> Void
-    let onMinimize: () -> Void
     let onPreviousChannel: () -> Void
     let onNextChannel: () -> Void
     @Environment(\.dismiss) private var dismiss
@@ -665,7 +648,6 @@ private struct FullScreenPlayerView: View {
         }
         .onDisappear {
             autoHideTask?.cancel()
-            playerController.detachOutput()
             PlayerOrientationCoordinator.shared.requestPortrait()
         }
         .onReceive(playerController.$stateDescription) { _ in
@@ -683,9 +665,6 @@ private struct FullScreenPlayerView: View {
     private var topBar: some View {
         HStack(spacing: 14) {
             Button {
-                playerController.stop()
-                playerController.detachOutput()
-                onMinimize()
                 dismiss()
             } label: {
                 Image(systemName: "pip.exit")

@@ -4,6 +4,7 @@ import UIKit
 
 struct RootView: View {
     @ObservedObject var viewModel: RootViewModel
+    @State private var globalSearchText = ""
 
     var body: some View {
         NavigationStack {
@@ -21,8 +22,6 @@ struct RootView: View {
                     if !viewModel.savedProfiles.isEmpty {
                         savedProfilesSection
                     }
-                    sourceSection
-                    statusSection
 
                     if let errorMessage = viewModel.errorMessage {
                         issueSection(message: errorMessage)
@@ -32,9 +31,15 @@ struct RootView: View {
                         loadedSourceSection(profile: profile)
                     }
 
-                    if !viewModel.groups.isEmpty {
+                    if !viewModel.items.isEmpty {
+                        globalSearchSection
+                    }
+
+                    if !filteredSearchItems.isEmpty {
+                        searchResultsSection
+                    } else if !viewModel.groups.isEmpty {
                         Section {
-                            ForEach(viewModel.groups) { group in
+                            ForEach(sortedGroups) { group in
                                 NavigationLink {
                                     ChannelListView(
                                         group: group,
@@ -52,6 +57,13 @@ struct RootView: View {
                             sectionHeader("Live Groups", subtitle: "Browse channel categories")
                         }
                     }
+
+                    if viewModel.items.isEmpty && viewModel.savedProfiles.isEmpty {
+                        emptyStateSection
+                    }
+
+                    sourceSection
+                    statusSection
                 }
                 .scrollContentBackground(.hidden)
                 .listStyle(.plain)
@@ -200,7 +212,7 @@ struct RootView: View {
     private var sourceSection: some View {
         Section {
             VStack(alignment: .leading, spacing: 16) {
-                sectionHeader("Connect Source", subtitle: "M3U URL, pasted M3U, or Xtream credentials")
+                sectionHeader("Manage Source", subtitle: "Add or switch playlists only when you need to")
 
                 Picker("Mode", selection: $viewModel.sourceMode) {
                     ForEach(RootViewModel.SourceMode.allCases) { mode in
@@ -295,6 +307,68 @@ struct RootView: View {
         .listRowSeparator(.hidden)
     }
 
+    private var globalSearchSection: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 14) {
+                sectionHeader("Search", subtitle: "Jump straight to a channel across every loaded group")
+
+                HStack(spacing: 12) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(AppPalette.secondaryText)
+
+                    TextField("Search all channels", text: $globalSearchText)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .foregroundStyle(.white)
+
+                    if !globalSearchText.isEmpty {
+                        Button {
+                            globalSearchText = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(AppPalette.secondaryText)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 14)
+                .background(AppPalette.fieldFill, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
+            .cardStyle()
+        }
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+    }
+
+    private var searchResultsSection: some View {
+        Section {
+            ForEach(filteredSearchItems) { item in
+                NavigationLink {
+                    ChannelDetailView(
+                        playlist: filteredSearchItems,
+                        initialIndex: filteredSearchItems.firstIndex(of: item) ?? 0,
+                        groupName: "Search Results",
+                        isFavorite: viewModel.isFavorite,
+                        onToggleFavorite: viewModel.toggleFavorite,
+                        onOpenItem: viewModel.registerRecent
+                    )
+                } label: {
+                    ChannelRow(
+                        item: item,
+                        isFavorite: viewModel.isFavorite(item),
+                        onToggleFavorite: { viewModel.toggleFavorite(item) }
+                    )
+                }
+                .buttonStyle(.plain)
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+            }
+        } header: {
+            sectionHeader("Search Results", subtitle: "\(filteredSearchItems.count) matching channels")
+        }
+    }
+
     private var statusSection: some View {
         Section {
             Text(viewModel.statusMessage)
@@ -316,6 +390,23 @@ struct RootView: View {
                     .foregroundStyle(AppPalette.secondaryText)
             }
             .cardStyle(background: AppPalette.danger)
+        }
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+    }
+
+    private var emptyStateSection: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 12) {
+                Label("Ready for your first provider", systemImage: "sparkles.tv.fill")
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(.white)
+
+                Text("Load an M3U playlist or Xtream provider to start building your home screen, favorites, recents, and live groups.")
+                    .font(.subheadline)
+                    .foregroundStyle(AppPalette.secondaryText)
+            }
+            .cardStyle()
         }
         .listRowBackground(Color.clear)
         .listRowSeparator(.hidden)
@@ -400,6 +491,29 @@ struct RootView: View {
             ) : AnyShapeStyle(AppPalette.fieldFill),
             in: RoundedRectangle(cornerRadius: 16, style: .continuous)
         )
+    }
+
+    private var filteredSearchItems: [MediaItem] {
+        let term = globalSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !term.isEmpty else {
+            return []
+        }
+
+        return viewModel.items.filter { item in
+            item.title.localizedCaseInsensitiveContains(term)
+                || (item.groupID?.localizedCaseInsensitiveContains(term) ?? false)
+        }
+    }
+
+    private var sortedGroups: [MediaGroup] {
+        viewModel.groups.sorted { lhs, rhs in
+            let lhsCount = viewModel.items(in: lhs).count
+            let rhsCount = viewModel.items(in: rhs).count
+            if lhsCount == rhsCount {
+                return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+            }
+            return lhsCount > rhsCount
+        }
     }
 }
 

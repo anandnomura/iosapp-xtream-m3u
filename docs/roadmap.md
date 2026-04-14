@@ -16,6 +16,8 @@ These are the items being grouped together for the next round of testing:
 - `[~]` Recent channels that persist across launches
 - `[~]` Channel/browser UI wired to favorites and recents
 - `[~]` Home screen shortcuts that surface saved content before raw source forms
+- `[~]` Search across all loaded content from the home screen
+- `[~]` Cleaner empty and browse states on the home screen
 
 ## Phase 1: Stable Live TV MVP
 
@@ -33,7 +35,7 @@ These are the items being grouped together for the next round of testing:
 - `[~]` Channel list reliability parity between M3U and Xtream sources
 - `[~]` Favorites
 - `[~]` Recents
-- `[ ]` Search across all loaded content
+- `[~]` Search across all loaded content
 
 ## Phase 2: Content-First App UX
 
@@ -43,7 +45,7 @@ These are the items being grouped together for the next round of testing:
 - `[ ]` Search entry point at the app level
 - `[ ]` Better group browsing density and sorting
 - `[ ]` Source management moved into settings/admin area
-- `[ ]` Cleaner empty / loading / error states
+- `[~]` Cleaner empty / loading / error states
 
 ## Phase 3: Player Quality
 

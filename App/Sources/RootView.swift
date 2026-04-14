@@ -386,6 +386,7 @@ private struct ChannelDetailView: View {
     @StateObject private var playerController = VLCPlayerController()
     @State private var isPresentingFullscreen = false
     @State private var hasAutoPresented = false
+    @State private var shouldResumeAfterFullscreenDismiss = false
     @State private var currentIndex: Int
     @Environment(\.dismiss) private var dismiss
 
@@ -498,6 +499,17 @@ private struct ChannelDetailView: View {
             playerController.stop()
             playerController.detachOutput()
         }
+        .onChange(of: isPresentingFullscreen) { _, isPresented in
+            guard !isPresented, shouldResumeAfterFullscreenDismiss else {
+                return
+            }
+
+            shouldResumeAfterFullscreenDismiss = false
+            Task {
+                try? await Task.sleep(for: .milliseconds(220))
+                await playerController.retryPlayback()
+            }
+        }
         .task {
             guard !playlist.isEmpty,
                   !hasAutoPresented,
@@ -517,6 +529,8 @@ private struct ChannelDetailView: View {
                 playerController: playerController
             ) {
                 dismissToBrowser()
+            } onMinimize: {
+                shouldResumeAfterFullscreenDismiss = true
             } onPreviousChannel: {
                 moveChannel(by: -1)
             } onNextChannel: {
@@ -535,29 +549,9 @@ private struct ChannelDetailView: View {
 
     @ViewBuilder
     private var videoSurfaceCard: some View {
-        if isPresentingFullscreen {
-            ZStack {
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .fill(Color.black)
-
-                VStack(spacing: 10) {
-                    Image(systemName: "arrow.up.left.and.arrow.down.right")
-                        .font(.system(size: 28, weight: .bold))
-                        .foregroundStyle(AppPalette.mint)
-                    Text("Playing in full screen")
-                        .font(.headline.weight(.bold))
-                        .foregroundStyle(.white)
-                    Text("Close the player to return here.")
-                        .font(.footnote)
-                        .foregroundStyle(AppPalette.secondaryText)
-                }
-            }
+        VLCVideoSurfaceView(mediaPlayer: playerController.mediaPlayer)
             .frame(minHeight: 230)
-        } else {
-            VLCVideoSurfaceView(mediaPlayer: playerController.mediaPlayer)
-                .frame(minHeight: 230)
-                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        }
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 
     private func playerButton(_ title: String, systemImage: String, fill: Bool) -> some View {
@@ -605,6 +599,7 @@ private struct FullScreenPlayerView: View {
     let hasNextChannel: Bool
     @ObservedObject var playerController: VLCPlayerController
     let onBackToBrowser: () -> Void
+    let onMinimize: () -> Void
     let onPreviousChannel: () -> Void
     let onNextChannel: () -> Void
     @Environment(\.dismiss) private var dismiss
@@ -665,6 +660,9 @@ private struct FullScreenPlayerView: View {
     private var topBar: some View {
         HStack(spacing: 14) {
             Button {
+                playerController.stop()
+                playerController.detachOutput()
+                onMinimize()
                 dismiss()
             } label: {
                 Image(systemName: "pip.exit")

@@ -139,12 +139,12 @@ final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLC
     }
 
     func selectAudioTrack(_ option: PlayerTrackOption) {
-        mediaPlayer.currentAudioTrackIndex = option.id
+        mediaPlayer.currentAudioTrackIndex = Int32(option.id)
         selectedAudioTrackID = option.id
     }
 
     func selectSubtitleTrack(_ option: PlayerTrackOption) {
-        mediaPlayer.currentVideoSubTitleIndex = option.id
+        mediaPlayer.currentVideoSubTitleIndex = Int32(option.id)
         selectedSubtitleTrackID = option.id
     }
 
@@ -242,8 +242,8 @@ final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLC
     private func refreshTrackOptions() {
         audioTrackOptions = zipTrackOptions(names: mediaPlayer.audioTrackNames, indexes: mediaPlayer.audioTrackIndexes)
         subtitleTrackOptions = zipTrackOptions(names: mediaPlayer.videoSubTitlesNames, indexes: mediaPlayer.videoSubTitlesIndexes)
-        selectedAudioTrackID = mediaPlayer.currentAudioTrackIndex
-        selectedSubtitleTrackID = mediaPlayer.currentVideoSubTitleIndex
+        selectedAudioTrackID = Int(mediaPlayer.currentAudioTrackIndex)
+        selectedSubtitleTrackID = Int(mediaPlayer.currentVideoSubTitleIndex)
     }
 
     private func zipTrackOptions(names: [Any]?, indexes: [Any]?) -> [PlayerTrackOption] {

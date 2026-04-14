@@ -138,6 +138,23 @@ jobs:
             --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID" \
             --output-format xml | tee "$LOG_PATH/altool-upload.log"
 
+          if grep -q "<string>Validation failed</string>" "$LOG_PATH/altool-upload.log"; then
+            echo "App Store upload failed validation."
+
+            if grep -q "Upload limit reached" "$LOG_PATH/altool-upload.log"; then
+              echo "Apple upload limit reached. Wait about 24 hours before running iOS TestFlight again."
+            fi
+
+            cat "$LOG_PATH/altool-upload.log"
+            exit 1
+          fi
+
+          if grep -q "<key>status</key>" "$LOG_PATH/altool-upload.log" && grep -q "<string>409</string>" "$LOG_PATH/altool-upload.log"; then
+            echo "App Store upload returned HTTP 409."
+            cat "$LOG_PATH/altool-upload.log"
+            exit 1
+          fi
+
       - name: Upload IPA artifact
         if: always()
         uses: actions/upload-artifact@v4

@@ -4,28 +4,34 @@ import UIKit
 
 struct RootView: View {
     private enum AppSection: String, CaseIterable, Identifiable {
-        case home = "Home"
-        case favorites = "Favorites"
-        case recents = "Recents"
-        case search = "Search"
         case source = "Source"
+        case channels = "Channels"
 
         var id: String { rawValue }
 
         var icon: String {
             switch self {
-            case .home: return "house.fill"
-            case .favorites: return "heart.fill"
-            case .recents: return "clock.fill"
-            case .search: return "magnifyingglass"
             case .source: return "slider.horizontal.3"
+            case .channels: return "play.tv.fill"
             }
         }
     }
 
     @ObservedObject var viewModel: RootViewModel
     @State private var globalSearchText = ""
-    @State private var selectedSection: AppSection = .home
+    @State private var selectedSection: AppSection = .source
+    @State private var revealsXtreamPassword = false
+    @FocusState private var focusedField: SourceInputField?
+
+    private enum SourceInputField: Hashable {
+        case profileName
+        case m3uURL
+        case guideURL
+        case rawM3U
+        case xtreamHost
+        case xtreamUsername
+        case xtreamPassword
+    }
 
     var body: some View {
         NavigationStack {
@@ -44,42 +50,52 @@ struct RootView: View {
                 }
                 .scrollContentBackground(.hidden)
                 .listStyle(.plain)
+                .scrollDismissesKeyboard(.interactively)
             }
             .toolbar(.hidden, for: .navigationBar)
+            .onAppear {
+                if viewModel.activeProfile != nil || !viewModel.items.isEmpty {
+                    selectedSection = .channels
+                } else {
+                    selectedSection = .source
+                }
+            }
         }
     }
 
     private var headerSection: some View {
         Section {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 14) {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("1xtream-m3u")
-                            .font(.system(size: 34, weight: .black, design: .rounded))
+                        Text(selectedSection == .source ? "Import playlists" : "1xtream-m3u")
+                            .font(.system(size: selectedSection == .source ? 40 : 34, weight: .black, design: .rounded))
                             .foregroundStyle(.white)
 
-                        Text("Load your provider, browse live groups, and test playback in a more polished IPTV shell.")
-                            .font(.subheadline)
-                            .foregroundStyle(AppPalette.secondaryText)
+                        Text(
+                            selectedSection == .source
+                            ? "M3U playlist URL or Xtream login."
+                            : "Browse channels and open playback."
+                        )
+                        .font(.subheadline)
+                        .foregroundStyle(AppPalette.secondaryText)
                     }
 
                     Spacer()
 
                     VStack(alignment: .trailing, spacing: 6) {
-                        Text(viewModel.isLoading ? "SYNCING" : "READY")
+                        Text(viewModel.isLoading ? "LOADING" : "READY")
                             .font(.caption.weight(.heavy))
                             .foregroundStyle(viewModel.isLoading ? AppPalette.gold : AppPalette.mint)
-                        Text(viewModel.sourceMode.rawValue)
-                            .font(.caption2)
-                            .foregroundStyle(AppPalette.secondaryText)
                     }
                 }
 
-                HStack(spacing: 12) {
-                    StatCapsule(title: "Sources", value: "3")
-                    StatCapsule(title: "Profiles", value: "\(viewModel.savedProfiles.count)")
-                    StatCapsule(title: "Groups", value: "\(viewModel.groups.count)")
-                    StatCapsule(title: "Channels", value: "\(viewModel.items.count)")
+                if selectedSection != .source {
+                    HStack(spacing: 12) {
+                        StatCapsule(title: "Profiles", value: "\(viewModel.savedProfiles.count)")
+                        StatCapsule(title: "Groups", value: "\(viewModel.groups.count)")
+                        StatCapsule(title: "Channels", value: "\(viewModel.items.count)")
+                    }
                 }
             }
             .cardStyle()
@@ -267,29 +283,17 @@ struct RootView: View {
     private var savedProfilesSection: some View {
         Section {
             VStack(alignment: .leading, spacing: 16) {
-                sectionHeader("Saved Profiles", subtitle: "Jump back into a provider and refresh only when you want")
+                sectionHeader("Saved Profiles", subtitle: "Tap one to reload it")
 
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 14) {
-                        ForEach(viewModel.savedProfiles) { record in
-                            Button {
-                                viewModel.selectProfile(record)
-                            } label: {
-                                SavedProfileCard(
-                                    record: record,
-                                    isActive: viewModel.activeProfile?.id == record.id
-                                )
-                            }
-                            .buttonStyle(.plain)
+                VStack(spacing: 10) {
+                    ForEach(viewModel.savedProfiles.prefix(6)) { record in
+                        Button {
+                            viewModel.selectProfile(record)
+                        } label: {
+                            savedProfileRow(record)
                         }
+                        .buttonStyle(.plain)
                     }
-                    .padding(.vertical, 2)
-                }
-
-                if !viewModel.savedProfiles.isEmpty {
-                    Text("Sources and loaded channels now persist on-device. Pull a profile back instantly, then refresh only when the provider changed.")
-                        .font(.footnote)
-                        .foregroundStyle(AppPalette.secondaryText)
                 }
             }
             .cardStyle()
@@ -300,86 +304,118 @@ struct RootView: View {
 
     private var sourceSection: some View {
         Section {
-            VStack(alignment: .leading, spacing: 16) {
-                sectionHeader("Manage Source", subtitle: "Add or switch playlists only when you need to")
+            VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Choose source type")
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(.white)
 
-                Picker("Mode", selection: $viewModel.sourceMode) {
-                    ForEach(RootViewModel.SourceMode.allCases) { mode in
-                        Text(mode.rawValue).tag(mode)
-                    }
+                    Text("Keep it simple: choose one import type and paste only the fields you actually have.")
+                        .font(.subheadline)
+                        .foregroundStyle(AppPalette.secondaryText)
                 }
-                .pickerStyle(.segmented)
-                .colorScheme(.dark)
 
-                sourceField("Profile Name") {
-                    TextField("Weekend Sports", text: $viewModel.profileName)
+                HStack(spacing: 10) {
+                    importModeButton(.m3u, title: "M3U", subtitle: "Playlist")
+                    importModeButton(.xtream, title: "Xtream", subtitle: "Login")
+                }
+
+                sourceField("Name") {
+                    TextField("My Playlist", text: $viewModel.profileName)
                         .textInputAutocapitalization(.words)
+                        .textFieldStyle(.plain)
+                        .focused($focusedField, equals: .profileName)
                 }
 
                 switch viewModel.sourceMode {
-                case .m3uURL:
+                case .m3u:
                     sourceField("Playlist URL") {
-                        TextField("http://example.com/get.php?...&type=m3u_plus&output=ts", text: $viewModel.m3uURLString)
-                            .textInputAutocapitalization(.never)
-                            .keyboardType(.URL)
-                            .autocorrectionDisabled()
+                        sourceTextField(
+                            "http://example.com/get.php?...&type=m3u_plus&output=ts",
+                            text: $viewModel.m3uURLString,
+                            focused: .m3uURL,
+                            submitLabel: .next
+                        ) {
+                            focusedField = .guideURL
+                        }
                     }
                     sourceField("Guide URL (Optional)") {
-                        TextField("https://example.com/guide.xml", text: $viewModel.guideURLString)
-                            .textInputAutocapitalization(.never)
-                            .keyboardType(.URL)
-                            .autocorrectionDisabled()
-                    }
-
-                case .m3uText:
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Playlist Text")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(AppPalette.secondaryText)
-
-                        TextEditor(text: $viewModel.rawM3UText)
-                            .frame(minHeight: 160)
-                            .font(.system(.footnote, design: .monospaced))
-                            .scrollContentBackground(.hidden)
-                            .padding(12)
-                            .background(AppPalette.fieldFill, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                            .foregroundStyle(.white)
-                    }
-                    sourceField("Guide URL (Optional)") {
-                        TextField("https://example.com/guide.xml", text: $viewModel.guideURLString)
-                            .textInputAutocapitalization(.never)
-                            .keyboardType(.URL)
-                            .autocorrectionDisabled()
+                        sourceTextField(
+                            "https://example.com/guide.xml",
+                            text: $viewModel.guideURLString,
+                            focused: .guideURL,
+                            submitLabel: .done
+                        ) {
+                            focusedField = nil
+                        }
                     }
 
                 case .xtream:
                     sourceField("Provider Host") {
-                        TextField("provider.example.com", text: $viewModel.xtreamHostString)
-                            .textInputAutocapitalization(.never)
-                            .keyboardType(.URL)
-                            .autocorrectionDisabled()
+                        sourceTextField(
+                            "provider.example.com",
+                            text: $viewModel.xtreamHostString,
+                            focused: .xtreamHost,
+                            submitLabel: .next
+                        ) {
+                            focusedField = .xtreamUsername
+                        }
                     }
 
                     sourceField("Username") {
-                        TextField("demo-user", text: $viewModel.xtreamUsername)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
+                        sourceTextField(
+                            "demo-user",
+                            text: $viewModel.xtreamUsername,
+                            focused: .xtreamUsername,
+                            keyboardType: .default,
+                            submitLabel: .next
+                        ) {
+                            focusedField = .xtreamPassword
+                        }
                     }
 
                     sourceField("Password") {
-                        SecureField("Password", text: $viewModel.xtreamPassword)
+                        HStack(spacing: 12) {
+                            Group {
+                                if revealsXtreamPassword {
+                                    TextField("Password", text: $viewModel.xtreamPassword)
+                                } else {
+                                    SecureField("Password", text: $viewModel.xtreamPassword)
+                                }
+                            }
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
+                            .textFieldStyle(.plain)
+                            .focused($focusedField, equals: .xtreamPassword)
+                            .submitLabel(.next)
+                            .onSubmit {
+                                focusedField = .guideURL
+                            }
+
+                            Button {
+                                revealsXtreamPassword.toggle()
+                            } label: {
+                                Image(systemName: revealsXtreamPassword ? "eye.slash.fill" : "eye.fill")
+                                    .foregroundStyle(AppPalette.mint)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(revealsXtreamPassword ? "Hide password" : "Show password")
+                        }
                     }
                     sourceField("Guide URL (Optional)") {
-                        TextField("https://example.com/guide.xml", text: $viewModel.guideURLString)
-                            .textInputAutocapitalization(.never)
-                            .keyboardType(.URL)
-                            .autocorrectionDisabled()
+                        sourceTextField(
+                            "https://example.com/guide.xml",
+                            text: $viewModel.guideURLString,
+                            focused: .guideURL,
+                            submitLabel: .done
+                        ) {
+                            focusedField = nil
+                        }
                     }
                 }
 
                 Button {
+                    focusedField = nil
                     Task { await viewModel.loadChannels() }
                 } label: {
                     HStack {
@@ -394,19 +430,17 @@ struct RootView: View {
                     }
                     .foregroundStyle(.black.opacity(0.85))
                     .padding(.horizontal, 16)
-                    .padding(.vertical, 15)
+                    .padding(.vertical, 16)
                     .background(
                         LinearGradient(colors: [AppPalette.mint, AppPalette.sky], startPoint: .leading, endPoint: .trailing),
-                        in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        in: RoundedRectangle(cornerRadius: 16, style: .continuous)
                     )
                 }
                 .disabled(viewModel.isLoading)
 
-                if !viewModel.savedProfiles.isEmpty {
-                    Text("Your current source entry is saved automatically so you can come back without retyping it.")
-                        .font(.caption)
-                        .foregroundStyle(AppPalette.secondaryText)
-                }
+                Text("Your draft is saved automatically.")
+                    .font(.caption)
+                    .foregroundStyle(AppPalette.secondaryText)
             }
             .cardStyle()
         }
@@ -620,6 +654,54 @@ struct RootView: View {
         .listRowSeparator(.hidden)
     }
 
+    private func compactLoadedSourceSection(profile: ProviderProfile) -> some View {
+        Section {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Current Source")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(AppPalette.secondaryText)
+                        Text(profile.name)
+                            .font(.title3.weight(.bold))
+                            .foregroundStyle(.white)
+                    }
+
+                    Spacer()
+
+                    Text(profile.kind.rawValue.uppercased())
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(AppPalette.mint)
+                }
+
+                HStack(spacing: 12) {
+                    compactStat("Groups", value: "\(viewModel.groups.count)")
+                    compactStat("Channels", value: "\(viewModel.items.count)")
+                }
+
+                HStack(spacing: 10) {
+                    Button {
+                        Task { await viewModel.refreshActiveProfile() }
+                    } label: {
+                        simpleActionButton("Refresh", icon: "arrow.clockwise", prominent: true)
+                    }
+                    .disabled(viewModel.isLoading)
+
+                    Button {
+                        if let active = viewModel.savedProfiles.firstIndex(where: { $0.profile.id == profile.id }) {
+                            viewModel.deleteProfiles(at: IndexSet(integer: active))
+                        }
+                    } label: {
+                        simpleActionButton("Remove", icon: "trash", prominent: false)
+                    }
+                }
+            }
+            .cardStyle()
+        }
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+    }
+
     @ViewBuilder
     private func sourceField<Content: View>(_ label: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -631,6 +713,119 @@ struct RootView: View {
                 .padding(.vertical, 14)
                 .background(AppPalette.fieldFill, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .foregroundStyle(.white)
+        }
+    }
+
+    private func importModeButton(_ mode: RootViewModel.SourceMode, title: String, subtitle: String) -> some View {
+        let isActive = viewModel.sourceMode == mode
+
+        return Button {
+            withAnimation(.easeInOut(duration: 0.18)) {
+                viewModel.sourceMode = mode
+            }
+        } label: {
+            VStack(spacing: 4) {
+                Text(title)
+                    .font(.headline.weight(.bold))
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(isActive ? .black.opacity(0.7) : AppPalette.secondaryText)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 16)
+            .foregroundStyle(isActive ? .black.opacity(0.85) : .white)
+            .background(
+                isActive
+                ? AnyShapeStyle(LinearGradient(colors: [AppPalette.mint, AppPalette.sky], startPoint: .leading, endPoint: .trailing))
+                : AnyShapeStyle(AppPalette.fieldFill),
+                in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func savedProfileRow(_ record: SavedProfileRecord) -> some View {
+        let isActive = viewModel.activeProfile?.id == record.id
+
+        return HStack(spacing: 14) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(record.profile.name)
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                Text(record.profile.kind.rawValue.uppercased())
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(AppPalette.secondaryText)
+            }
+
+            Spacer()
+
+            Text("\(record.items.count) ch")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(isActive ? .black.opacity(0.8) : AppPalette.mint)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background((isActive ? AppPalette.mint : AppPalette.fieldFill), in: Capsule())
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 14)
+        .background(AppPalette.fieldFill.opacity(isActive ? 1 : 0.7), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private func simpleActionButton(_ title: String, icon: String, prominent: Bool) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+            Text(title)
+                .fontWeight(.semibold)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 14)
+        .foregroundStyle(prominent ? .black.opacity(0.85) : .white)
+        .background(
+            prominent ? AnyShapeStyle(AppPalette.mint) : AnyShapeStyle(AppPalette.fieldFill),
+            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+        )
+    }
+
+    private func compactStat(_ title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(AppPalette.secondaryText)
+            Text(value)
+                .font(.headline.weight(.bold))
+                .foregroundStyle(.white)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(AppPalette.fieldFill, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func sourceTextField(
+        _ placeholder: String,
+        text: Binding<String>,
+        focused: SourceInputField,
+        keyboardType: UIKeyboardType = .URL,
+        submitLabel: SubmitLabel,
+        onSubmit: @escaping () -> Void
+    ) -> some View {
+        HStack(spacing: 12) {
+            TextField(placeholder, text: text)
+                .textInputAutocapitalization(.never)
+                .keyboardType(keyboardType)
+                .autocorrectionDisabled()
+                .textFieldStyle(.plain)
+                .focused($focusedField, equals: focused)
+                .submitLabel(submitLabel)
+                .onSubmit(onSubmit)
+
+            Button("Paste") {
+                if let value = UIPasteboard.general.string, !value.isEmpty {
+                    text.wrappedValue = value
+                }
+            }
+            .font(.caption.weight(.bold))
+            .foregroundStyle(AppPalette.mint)
         }
     }
 
@@ -663,44 +858,34 @@ struct RootView: View {
     }
 
     private var filteredSearchItems: [MediaItem] {
-        let term = globalSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !term.isEmpty else {
-            return []
-        }
-
-        return viewModel.items.filter { item in
-            item.title.localizedCaseInsensitiveContains(term)
-                || (item.groupID?.localizedCaseInsensitiveContains(term) ?? false)
-        }
-    }
-
-    private var sortedGroups: [MediaGroup] {
-        viewModel.groups.sorted { lhs, rhs in
-            let lhsCount = viewModel.items(in: lhs).count
-            let rhsCount = viewModel.items(in: rhs).count
-            if lhsCount == rhsCount {
-                return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
-            }
-            return lhsCount > rhsCount
-        }
+        viewModel.searchItems(matching: globalSearchText)
     }
 
     @ViewBuilder
     private var contentSections: some View {
         switch selectedSection {
-        case .home:
-            if !viewModel.favorites.isEmpty {
+        case .channels:
+            if let profile = viewModel.activeProfile {
+                compactLoadedSourceSection(profile: profile)
+            }
+
+            if !viewModel.items.isEmpty {
+                globalSearchSection
+            }
+
+            if !globalSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                searchResultsSection
+            } else if !viewModel.favorites.isEmpty {
                 favoritesSection
             }
-            if !viewModel.recents.isEmpty {
+
+            if globalSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !viewModel.recents.isEmpty {
                 recentsSection
             }
-            if let profile = viewModel.activeProfile {
-                loadedSourceSection(profile: profile)
-            }
-            if !viewModel.groups.isEmpty {
+
+            if globalSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !viewModel.groups.isEmpty {
                 Section {
-                    ForEach(sortedGroups) { group in
+                    ForEach(viewModel.groupsForDisplay()) { group in
                         NavigationLink {
                             ChannelListView(
                                 group: group,
@@ -712,46 +897,25 @@ struct RootView: View {
                                 onOpenGroup: viewModel.recordGroupVisit
                             )
                         } label: {
-                            GroupRow(group: group, count: viewModel.items(in: group).count)
+                            GroupRow(group: group, count: viewModel.itemCount(in: group))
                         }
                         .listRowBackground(Color.clear)
                     }
                 } header: {
                     sectionHeader("Live Groups", subtitle: "Browse channel categories")
                 }
-            } else if viewModel.savedProfiles.isEmpty {
+            } else if viewModel.items.isEmpty {
                 emptyStateSection
             }
 
-        case .favorites:
-            favoritesScreenSection
-
-        case .recents:
-            recentsScreenSection
-
-        case .search:
-            if !viewModel.items.isEmpty {
-                globalSearchSection
-                searchResultsSection
-            } else {
-                Section {
-                    contentEmptyCard(
-                        title: "Search unlocks after loading a provider",
-                        subtitle: "Load a saved profile or add a source, then use search to jump across all channels."
-                    )
-                }
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
-            }
-
         case .source:
+            sourceSection
+            if let profile = viewModel.activeProfile {
+                compactLoadedSourceSection(profile: profile)
+            }
             if !viewModel.savedProfiles.isEmpty {
                 savedProfilesSection
             }
-            if let profile = viewModel.activeProfile {
-                loadedSourceSection(profile: profile)
-            }
-            sourceSection
             statusSection
         }
     }
@@ -939,6 +1103,7 @@ private struct ChannelDetailView: View {
             playerController.stop()
             playerController.detachOutput()
         }
+        .navigationBarBackButtonHidden(true)
     }
 
     private var currentItem: MediaItem {
@@ -1025,7 +1190,6 @@ private struct FullScreenPlayerView: View {
         }
         .statusBarHidden(true)
         .onAppear {
-            PlayerOrientationCoordinator.shared.requestLandscape()
             controlsVisible = true
             MediaSessionCoordinator.shared.configureRemoteCommands(
                 onPlay: { playerController.resumePlayback() },
@@ -1047,7 +1211,6 @@ private struct FullScreenPlayerView: View {
         .onDisappear {
             autoHideTask?.cancel()
             MediaSessionCoordinator.shared.clearRemoteCommands()
-            PlayerOrientationCoordinator.shared.requestPortrait()
         }
         .onReceive(playerController.$stateDescription) { _ in
             if shouldAutoHideControls {
@@ -1066,7 +1229,6 @@ private struct FullScreenPlayerView: View {
             Button {
                 playerController.stop()
                 playerController.detachOutput()
-                dismiss()
                 Task { @MainActor in
                     onBackToBrowser()
                 }
@@ -1109,17 +1271,6 @@ private struct FullScreenPlayerView: View {
                     .background(.black.opacity(0.45), in: Circle())
             }
 
-            Button {
-                diagnosticsVisible.toggle()
-                revealControls()
-            } label: {
-                Image(systemName: diagnosticsVisible ? "info.circle.fill" : "info.circle")
-                    .font(.headline.weight(.bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 42, height: 42)
-                    .background(.black.opacity(0.45), in: Circle())
-            }
-
             AirPlayRoutePicker()
                 .frame(width: 42, height: 42)
                 .background(.black.opacity(0.45), in: Circle())
@@ -1145,13 +1296,6 @@ private struct FullScreenPlayerView: View {
                     primaryAction()
                 } label: {
                     fullscreenButton(primaryActionTitle, systemImage: primaryActionIcon, fill: true)
-                }
-
-                Button {
-                    playerController.stop()
-                    playerController.detachOutput()
-                } label: {
-                    fullscreenButton("Stop", systemImage: "stop.fill", fill: false)
                 }
 
                 Button {
@@ -1212,6 +1356,20 @@ private struct FullScreenPlayerView: View {
                     }
                 }
             }
+
+            Button {
+                diagnosticsVisible.toggle()
+                revealControls()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: diagnosticsVisible ? "info.circle.fill" : "info.circle")
+                    Text(diagnosticsVisible ? "Hide Details" : "Show Details")
+                        .fontWeight(.semibold)
+                }
+                .foregroundStyle(.white)
+                .padding(.vertical, 10)
+            }
+            .buttonStyle(.plain)
 
             if let transportSummary = playerController.transportSummary {
                 Text(transportSummary)
@@ -1486,29 +1644,6 @@ private struct SavedProfileCard: View {
     }
 }
 
-private final class PlayerOrientationCoordinator {
-    static let shared = PlayerOrientationCoordinator()
-
-    func requestLandscape() {
-        request(mask: .landscape)
-    }
-
-    func requestPortrait() {
-        request(mask: .portrait)
-    }
-
-    private func request(mask: UIInterfaceOrientationMask) {
-        guard let scene = UIApplication.shared.connectedScenes
-            .compactMap({ $0 as? UIWindowScene })
-            .first(where: { $0.activationState == .foregroundActive }) else {
-            return
-        }
-
-        let preferences = UIWindowScene.GeometryPreferences.iOS(interfaceOrientations: mask)
-        try? scene.requestGeometryUpdate(preferences)
-    }
-}
-
 private struct GroupRow: View {
     let group: MediaGroup
     let count: Int
@@ -1693,23 +1828,23 @@ private struct StatCapsule: View {
 private struct AppBackdrop: View {
     var body: some View {
         LinearGradient(
-            colors: [Color(red: 0.03, green: 0.05, blue: 0.11), Color(red: 0.02, green: 0.08, blue: 0.15), Color(red: 0.05, green: 0.15, blue: 0.16)],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
+            colors: [Color(red: 0.03, green: 0.04, blue: 0.09), Color(red: 0.05, green: 0.08, blue: 0.14)],
+            startPoint: .top,
+            endPoint: .bottom
         )
         .overlay(alignment: .topTrailing) {
             Circle()
-                .fill(AppPalette.teal.opacity(0.28))
-                .frame(width: 240, height: 240)
-                .blur(radius: 30)
-                .offset(x: 80, y: -40)
+                .fill(AppPalette.teal.opacity(0.14))
+                .frame(width: 180, height: 180)
+                .blur(radius: 36)
+                .offset(x: 70, y: -20)
         }
         .overlay(alignment: .bottomLeading) {
             Circle()
-                .fill(AppPalette.blue.opacity(0.22))
-                .frame(width: 260, height: 260)
-                .blur(radius: 32)
-                .offset(x: -80, y: 90)
+                .fill(AppPalette.blue.opacity(0.12))
+                .frame(width: 220, height: 220)
+                .blur(radius: 40)
+                .offset(x: -60, y: 90)
         }
         .ignoresSafeArea()
     }

@@ -6,14 +6,13 @@ import IPTVData
 @MainActor
 final class RootViewModel: ObservableObject {
     enum SourceMode: String, CaseIterable, Identifiable {
-        case m3uURL = "M3U URL"
-        case m3uText = "M3U Text"
+        case m3u = "M3U"
         case xtream = "Xtream"
 
         var id: String { rawValue }
     }
 
-    @Published var sourceMode: SourceMode = .m3uURL
+    @Published var sourceMode: SourceMode = .m3u
     @Published var profileName = "My Playlist"
     @Published var m3uURLString = ""
     @Published var guideURLString = ""
@@ -34,6 +33,11 @@ final class RootViewModel: ObservableObject {
     @Published private(set) var isLoading = false
     @Published var errorMessage: String?
 
+    private var itemsByGroupID: [String: [MediaItem]] = [:]
+    private var groupCountsByID: [String: Int] = [:]
+    private var groupNamesByID: [String: String] = [:]
+    private var sortedGroupsByItemCount: [MediaGroup] = []
+    private var searchableTextByItemKey: [String: String] = [:]
     private let m3uLoader: M3UPlaylistLoader
     private let xtreamLoader: XtreamLivePlaylistLoader
     private let guideLoader: XMLTVGuideLoader
@@ -110,6 +114,7 @@ final class RootViewModel: ObservableObject {
         activeProfile = record.profile
         groups = record.groups
         items = record.items.map(markFavoriteIfNeeded)
+        rebuildItemIndexes()
         lastUpdatedAt = record.lastUpdatedAt
         statusMessage = record.groups.isEmpty
             ? "Profile selected. Load or refresh to fetch channels."
@@ -143,6 +148,7 @@ final class RootViewModel: ObservableObject {
             self.activeProfile = nil
             groups = []
             items = []
+            rebuildItemIndexes()
             lastUpdatedAt = nil
             persistence.saveActiveProfileID(nil)
             statusMessage = "Profile removed."
@@ -150,7 +156,26 @@ final class RootViewModel: ObservableObject {
     }
 
     func items(in group: MediaGroup) -> [MediaItem] {
-        items.filter { $0.groupID == group.id }
+        itemsByGroupID[group.id] ?? []
+    }
+
+    func itemCount(in group: MediaGroup) -> Int {
+        groupCountsByID[group.id] ?? 0
+    }
+
+    func groupsForDisplay() -> [MediaGroup] {
+        sortedGroupsByItemCount
+    }
+
+    func searchItems(matching term: String) -> [MediaItem] {
+        let normalizedTerm = normalizedSearchText(term)
+        guard !normalizedTerm.isEmpty else {
+            return []
+        }
+
+        return items.filter { item in
+            searchableTextByItemKey[searchKey(for: item)]?.contains(normalizedTerm) == true
+        }
     }
 
     func nowNext(for item: MediaItem) -> ChannelNowNext? {
@@ -224,7 +249,7 @@ final class RootViewModel: ObservableObject {
         let finalName = trimmedName.isEmpty ? "My Playlist" : trimmedName
 
         switch sourceMode {
-        case .m3uURL:
+        case .m3u:
             guard let url = URL(string: m3uURLString.trimmingCharacters(in: .whitespacesAndNewlines)),
                   ["http", "https"].contains(url.scheme?.lowercased() ?? "")
             else {
@@ -243,27 +268,6 @@ final class RootViewModel: ObservableObject {
                 name: finalName,
                 kind: .m3u,
                 playlistSource: PlaylistSource(remoteURL: url),
-                xmltvSource: parsedGuideSource()
-            )
-
-        case .m3uText:
-            let text = rawM3UText.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !text.isEmpty else {
-                throw PlaylistLoaderError.missingSource
-            }
-
-            if let existing = matchingSavedProfile(kind: .m3u, remoteURL: nil, rawText: text, host: nil, username: nil, password: nil) {
-                var updated = existing.profile
-                updated.name = finalName
-                updated.playlistSource = PlaylistSource(rawText: text)
-                updated.xmltvSource = parsedGuideSource()
-                return updated
-            }
-
-            return ProviderProfile(
-                name: finalName,
-                kind: .m3u,
-                playlistSource: PlaylistSource(rawText: text),
                 xmltvSource: parsedGuideSource()
             )
 
@@ -292,8 +296,8 @@ final class RootViewModel: ObservableObject {
             return ProviderProfile(
                 name: finalName,
                 kind: .xtream,
-                xtreamCredentials: XtreamCredentials(host: host, username: username, password: password),
-                xmltvSource: parsedGuideSource()
+                xmltvSource: parsedGuideSource(),
+                xtreamCredentials: XtreamCredentials(host: host, username: username, password: password)
             )
         }
     }
@@ -305,6 +309,7 @@ final class RootViewModel: ObservableObject {
 
         groups = parsed.groups
         items = parsed.items.map(markFavoriteIfNeeded)
+        rebuildItemIndexes()
         lastUpdatedAt = .now
         upsertSavedProfile(
             SavedProfileRecord(
@@ -370,7 +375,7 @@ final class RootViewModel: ObservableObject {
         recents = persistence.loadRecents()
 
         if let draft = persistence.loadDraft() {
-            sourceMode = SourceMode(rawValue: draft.sourceMode) ?? .m3uURL
+            sourceMode = SourceMode(rawValue: draft.sourceMode) ?? .m3u
             profileName = draft.profileName
             m3uURLString = draft.m3uURLString
             guideURLString = draft.guideURLString
@@ -393,13 +398,10 @@ final class RootViewModel: ObservableObject {
 
         switch profile.kind {
         case .m3u:
-            sourceMode = .m3uURL
+            sourceMode = .m3u
             m3uURLString = profile.playlistSource?.remoteURL?.absoluteString ?? ""
             guideURLString = profile.xmltvSource?.remoteURL?.absoluteString ?? profile.xmltvSource?.rawText ?? ""
             rawM3UText = profile.playlistSource?.rawText ?? ""
-            if profile.playlistSource?.remoteURL == nil, !(profile.playlistSource?.rawText?.isEmpty ?? true) {
-                sourceMode = .m3uText
-            }
             xtreamHostString = ""
             xtreamUsername = ""
             xtreamPassword = ""
@@ -477,6 +479,7 @@ final class RootViewModel: ObservableObject {
 
     private func applyFavoriteFlagsAcrossState() {
         items = items.map(markFavoriteIfNeeded)
+        rebuildItemIndexes()
         recents = recents.map(markFavoriteIfNeeded)
         favorites = favorites.map(markFavoriteIfNeeded)
 
@@ -489,6 +492,33 @@ final class RootViewModel: ObservableObject {
         persistence.saveFavorites(favorites)
         persistence.saveRecents(recents)
         persistence.saveProfiles(savedProfiles)
+    }
+
+    private func rebuildItemIndexes() {
+        groupNamesByID = Dictionary(uniqueKeysWithValues: groups.map { ($0.id, $0.name) })
+        itemsByGroupID = Dictionary(grouping: items) { $0.groupID ?? "ungrouped" }
+        groupCountsByID = itemsByGroupID.mapValues(\.count)
+        searchableTextByItemKey = Dictionary(uniqueKeysWithValues: items.map { item in
+            let groupName = item.groupID.flatMap { groupNamesByID[$0] } ?? item.groupID ?? ""
+            let searchText = normalizedSearchText("\(item.title) \(groupName)")
+            return (searchKey(for: item), searchText)
+        })
+        sortedGroupsByItemCount = groups.sorted { lhs, rhs in
+            let lhsCount = groupCountsByID[lhs.id] ?? 0
+            let rhsCount = groupCountsByID[rhs.id] ?? 0
+            if lhsCount == rhsCount {
+                return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+            }
+            return lhsCount > rhsCount
+        }
+    }
+
+    private func searchKey(for item: MediaItem) -> String {
+        "\(item.providerID.uuidString)::\(item.id)"
+    }
+
+    private func normalizedSearchText(_ text: String) -> String {
+        text.trimmingCharacters(in: .whitespacesAndNewlines).folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
     }
 
     private func markLastPlayed(_ item: MediaItem) {

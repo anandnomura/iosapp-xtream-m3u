@@ -3,8 +3,29 @@ import IPTVDomain
 import UIKit
 
 struct RootView: View {
+    private enum AppSection: String, CaseIterable, Identifiable {
+        case home = "Home"
+        case favorites = "Favorites"
+        case recents = "Recents"
+        case search = "Search"
+        case source = "Source"
+
+        var id: String { rawValue }
+
+        var icon: String {
+            switch self {
+            case .home: return "house.fill"
+            case .favorites: return "heart.fill"
+            case .recents: return "clock.fill"
+            case .search: return "magnifyingglass"
+            case .source: return "slider.horizontal.3"
+            }
+        }
+    }
+
     @ObservedObject var viewModel: RootViewModel
     @State private var globalSearchText = ""
+    @State private var selectedSection: AppSection = .home
 
     var body: some View {
         NavigationStack {
@@ -13,57 +34,13 @@ struct RootView: View {
 
                 List {
                     headerSection
-                    if !viewModel.favorites.isEmpty {
-                        favoritesSection
-                    }
-                    if !viewModel.recents.isEmpty {
-                        recentsSection
-                    }
-                    if !viewModel.savedProfiles.isEmpty {
-                        savedProfilesSection
-                    }
+                    sectionSwitcherSection
 
                     if let errorMessage = viewModel.errorMessage {
                         issueSection(message: errorMessage)
                     }
 
-                    if let profile = viewModel.activeProfile {
-                        loadedSourceSection(profile: profile)
-                    }
-
-                    if !viewModel.items.isEmpty {
-                        globalSearchSection
-                    }
-
-                    if !filteredSearchItems.isEmpty {
-                        searchResultsSection
-                    } else if !viewModel.groups.isEmpty {
-                        Section {
-                            ForEach(sortedGroups) { group in
-                                NavigationLink {
-                                    ChannelListView(
-                                        group: group,
-                                        items: viewModel.items(in: group),
-                                        isFavorite: viewModel.isFavorite,
-                                        onToggleFavorite: viewModel.toggleFavorite,
-                                        onOpenItem: viewModel.registerRecent
-                                    )
-                                } label: {
-                                    GroupRow(group: group, count: viewModel.items(in: group).count)
-                                }
-                                .listRowBackground(Color.clear)
-                            }
-                        } header: {
-                            sectionHeader("Live Groups", subtitle: "Browse channel categories")
-                        }
-                    }
-
-                    if viewModel.items.isEmpty && viewModel.savedProfiles.isEmpty {
-                        emptyStateSection
-                    }
-
-                    sourceSection
-                    statusSection
+                    contentSections
                 }
                 .scrollContentBackground(.hidden)
                 .listStyle(.plain)
@@ -111,6 +88,42 @@ struct RootView: View {
         .listRowSeparator(.hidden)
     }
 
+    private var sectionSwitcherSection: some View {
+        Section {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(AppSection.allCases) { section in
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                selectedSection = section
+                            }
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: section.icon)
+                                Text(section.rawValue)
+                                    .fontWeight(.bold)
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
+                            .foregroundStyle(selectedSection == section ? .black.opacity(0.85) : .white)
+                            .background(
+                                selectedSection == section ? AnyShapeStyle(
+                                    LinearGradient(colors: [AppPalette.mint, AppPalette.sky], startPoint: .leading, endPoint: .trailing)
+                                ) : AnyShapeStyle(AppPalette.fieldFill),
+                                in: Capsule()
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+            .cardStyle()
+        }
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+    }
+
     private var favoritesSection: some View {
         Section {
             VStack(alignment: .leading, spacing: 16) {
@@ -143,6 +156,41 @@ struct RootView: View {
         .listRowSeparator(.hidden)
     }
 
+    private var favoritesScreenSection: some View {
+        Section {
+            if viewModel.favorites.isEmpty {
+                contentEmptyCard(
+                    title: "No favorites yet",
+                    subtitle: "Tap the heart on channels you want quick access to from anywhere in the app."
+                )
+            } else {
+                ForEach(viewModel.favorites) { item in
+                    NavigationLink {
+                        ChannelDetailView(
+                            playlist: viewModel.favorites,
+                            initialIndex: viewModel.favorites.firstIndex(of: item) ?? 0,
+                            groupName: "Favorites",
+                            isFavorite: viewModel.isFavorite,
+                            onToggleFavorite: viewModel.toggleFavorite,
+                            onOpenItem: viewModel.registerRecent
+                        )
+                    } label: {
+                        ChannelRow(
+                            item: item,
+                            isFavorite: viewModel.isFavorite(item),
+                            onToggleFavorite: { viewModel.toggleFavorite(item) }
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                }
+            }
+        } header: {
+            sectionHeader("Favorites Library", subtitle: "All channels you pinned for fast return access")
+        }
+    }
+
     private var recentsSection: some View {
         Section {
             VStack(alignment: .leading, spacing: 16) {
@@ -173,6 +221,41 @@ struct RootView: View {
         }
         .listRowBackground(Color.clear)
         .listRowSeparator(.hidden)
+    }
+
+    private var recentsScreenSection: some View {
+        Section {
+            if viewModel.recents.isEmpty {
+                contentEmptyCard(
+                    title: "No recent playback yet",
+                    subtitle: "Open channels from groups, favorites, or search and they will appear here."
+                )
+            } else {
+                ForEach(viewModel.recents) { item in
+                    NavigationLink {
+                        ChannelDetailView(
+                            playlist: viewModel.recents,
+                            initialIndex: viewModel.recents.firstIndex(of: item) ?? 0,
+                            groupName: "Recents",
+                            isFavorite: viewModel.isFavorite,
+                            onToggleFavorite: viewModel.toggleFavorite,
+                            onOpenItem: viewModel.registerRecent
+                        )
+                    } label: {
+                        ChannelRow(
+                            item: item,
+                            isFavorite: viewModel.isFavorite(item),
+                            onToggleFavorite: { viewModel.toggleFavorite(item) }
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                }
+            }
+        } header: {
+            sectionHeader("Recent Playback", subtitle: "Continue from the channels you opened most recently")
+        }
     }
 
     private var savedProfilesSection: some View {
@@ -343,29 +426,41 @@ struct RootView: View {
 
     private var searchResultsSection: some View {
         Section {
-            ForEach(filteredSearchItems) { item in
-                NavigationLink {
-                    ChannelDetailView(
-                        playlist: filteredSearchItems,
-                        initialIndex: filteredSearchItems.firstIndex(of: item) ?? 0,
-                        groupName: "Search Results",
-                        isFavorite: viewModel.isFavorite,
-                        onToggleFavorite: viewModel.toggleFavorite,
-                        onOpenItem: viewModel.registerRecent
-                    )
-                } label: {
-                    ChannelRow(
-                        item: item,
-                        isFavorite: viewModel.isFavorite(item),
-                        onToggleFavorite: { viewModel.toggleFavorite(item) }
-                    )
+            if globalSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                contentEmptyCard(
+                    title: "Search all loaded channels",
+                    subtitle: "Use channel names or group names to jump across every loaded provider group."
+                )
+            } else if filteredSearchItems.isEmpty {
+                contentEmptyCard(
+                    title: "No matching channels",
+                    subtitle: "Try a shorter term or clear the search to browse groups again."
+                )
+            } else {
+                ForEach(filteredSearchItems) { item in
+                    NavigationLink {
+                        ChannelDetailView(
+                            playlist: filteredSearchItems,
+                            initialIndex: filteredSearchItems.firstIndex(of: item) ?? 0,
+                            groupName: "Search Results",
+                            isFavorite: viewModel.isFavorite,
+                            onToggleFavorite: viewModel.toggleFavorite,
+                            onOpenItem: viewModel.registerRecent
+                        )
+                    } label: {
+                        ChannelRow(
+                            item: item,
+                            isFavorite: viewModel.isFavorite(item),
+                            onToggleFavorite: { viewModel.toggleFavorite(item) }
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
                 }
-                .buttonStyle(.plain)
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
             }
         } header: {
-            sectionHeader("Search Results", subtitle: "\(filteredSearchItems.count) matching channels")
+            sectionHeader("Search Results", subtitle: filteredSearchItems.isEmpty ? "Find channels across all groups" : "\(filteredSearchItems.count) matching channels")
         }
     }
 
@@ -397,16 +492,10 @@ struct RootView: View {
 
     private var emptyStateSection: some View {
         Section {
-            VStack(alignment: .leading, spacing: 12) {
-                Label("Ready for your first provider", systemImage: "sparkles.tv.fill")
-                    .font(.headline.weight(.bold))
-                    .foregroundStyle(.white)
-
-                Text("Load an M3U playlist or Xtream provider to start building your home screen, favorites, recents, and live groups.")
-                    .font(.subheadline)
-                    .foregroundStyle(AppPalette.secondaryText)
-            }
-            .cardStyle()
+            contentEmptyCard(
+                title: "Ready for your first provider",
+                subtitle: "Load an M3U playlist or Xtream provider to start building your home screen, favorites, recents, and live groups."
+            )
         }
         .listRowBackground(Color.clear)
         .listRowSeparator(.hidden)
@@ -514,6 +603,88 @@ struct RootView: View {
             }
             return lhsCount > rhsCount
         }
+    }
+
+    @ViewBuilder
+    private var contentSections: some View {
+        switch selectedSection {
+        case .home:
+            if !viewModel.favorites.isEmpty {
+                favoritesSection
+            }
+            if !viewModel.recents.isEmpty {
+                recentsSection
+            }
+            if let profile = viewModel.activeProfile {
+                loadedSourceSection(profile: profile)
+            }
+            if !viewModel.groups.isEmpty {
+                Section {
+                    ForEach(sortedGroups) { group in
+                        NavigationLink {
+                            ChannelListView(
+                                group: group,
+                                items: viewModel.items(in: group),
+                                isFavorite: viewModel.isFavorite,
+                                onToggleFavorite: viewModel.toggleFavorite,
+                                onOpenItem: viewModel.registerRecent
+                            )
+                        } label: {
+                            GroupRow(group: group, count: viewModel.items(in: group).count)
+                        }
+                        .listRowBackground(Color.clear)
+                    }
+                } header: {
+                    sectionHeader("Live Groups", subtitle: "Browse channel categories")
+                }
+            } else if viewModel.savedProfiles.isEmpty {
+                emptyStateSection
+            }
+
+        case .favorites:
+            favoritesScreenSection
+
+        case .recents:
+            recentsScreenSection
+
+        case .search:
+            if !viewModel.items.isEmpty {
+                globalSearchSection
+                searchResultsSection
+            } else {
+                Section {
+                    contentEmptyCard(
+                        title: "Search unlocks after loading a provider",
+                        subtitle: "Load a saved profile or add a source, then use search to jump across all channels."
+                    )
+                }
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+            }
+
+        case .source:
+            if !viewModel.savedProfiles.isEmpty {
+                savedProfilesSection
+            }
+            if let profile = viewModel.activeProfile {
+                loadedSourceSection(profile: profile)
+            }
+            sourceSection
+            statusSection
+        }
+    }
+
+    private func contentEmptyCard(title: String, subtitle: String) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title)
+                .font(.headline.weight(.bold))
+                .foregroundStyle(.white)
+
+            Text(subtitle)
+                .font(.subheadline)
+                .foregroundStyle(AppPalette.secondaryText)
+        }
+        .cardStyle()
     }
 }
 

@@ -12,12 +12,16 @@ This is the authoritative execution tracker for the app. We update this file as 
 
 These are the items being grouped together for the next round of testing:
 
+- `[~]` Top-level app sections for Home, Favorites, Recents, Search, and Source
 - `[~]` Favorites that persist across launches
 - `[~]` Recent channels that persist across launches
 - `[~]` Channel/browser UI wired to favorites and recents
 - `[~]` Home screen shortcuts that surface saved content before raw source forms
 - `[~]` Search across all loaded content from the home screen
 - `[~]` Cleaner empty and browse states on the home screen
+- `[~]` Source management moved out of the main landing flow
+- `[~]` Dedicated favorites and recents screens
+- `[~]` App-level search section
 
 ### How To Test Current Batch
 
@@ -58,6 +62,22 @@ These are the items being grouped together for the next round of testing:
 - Confirm the app shows a useful empty state instead of only raw forms.
 - After loading a provider, confirm live groups appear sorted and the home screen still feels usable.
 
+7. App sections
+- Confirm the section switcher shows `Home`, `Favorites`, `Recents`, `Search`, and `Source`.
+- Confirm switching sections does not lose loaded state.
+- Confirm `Source` is where profile switching and source entry now live.
+- Confirm `Home` feels content-first instead of source-form-first.
+
+8. Dedicated favorites / recents screens
+- Open the `Favorites` section and confirm it shows a full list, not just the rail.
+- Open the `Recents` section and confirm it shows a full list in recent-first order.
+- Confirm tapping items from these sections opens playback.
+
+9. App-level search section
+- Open the `Search` section and search from there instead of the home screen.
+- Confirm it can search across all loaded channels.
+- Confirm the search section shows a useful empty or no-results state.
+
 ## Phase 1: Stable Live TV MVP
 
 - `[x]` M3U URL loading
@@ -81,9 +101,9 @@ These are the items being grouped together for the next round of testing:
 - `[~]` Home dashboard instead of source-form-first landing
 - `[~]` Favorites rail / screen
 - `[~]` Recents / continue watching rail
-- `[ ]` Search entry point at the app level
-- `[ ]` Better group browsing density and sorting
-- `[ ]` Source management moved into settings/admin area
+- `[~]` Search entry point at the app level
+- `[~]` Better group browsing density and sorting
+- `[~]` Source management moved into settings/admin area
 - `[~]` Cleaner empty / loading / error states
 
 ## Phase 3: Player Quality

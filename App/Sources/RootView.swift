@@ -423,24 +423,24 @@ private struct ChannelDetailView: View {
                         VStack(alignment: .leading, spacing: 14) {
                             videoSurfaceCard
 
-                            HStack(spacing: 12) {
-                                Button {
-                                    Task {
-                                        isMiniPlayerActive = true
-                                        await playerController.startPlayback(source: source)
-                                    }
-                                } label: {
-                                    playerButton("Play Stream", systemImage: "play.fill", fill: true)
-                                }
-
-                                Button {
-                                    playerController.stop()
-                                } label: {
-                                    playerButton("Stop", systemImage: "stop.fill", fill: false)
-                                }
-                            }
-
                             if !isMiniPlayerActive {
+                                HStack(spacing: 12) {
+                                    Button {
+                                        Task {
+                                            isMiniPlayerActive = true
+                                            await playerController.startPlayback(source: source)
+                                        }
+                                    } label: {
+                                        playerButton("Play Stream", systemImage: "play.fill", fill: true)
+                                    }
+
+                                    Button {
+                                        playerController.stop()
+                                    } label: {
+                                        playerButton("Stop", systemImage: "stop.fill", fill: false)
+                                    }
+                                }
+
                                 Button {
                                     isPresentingFullscreen = true
                                 } label: {
@@ -511,12 +511,6 @@ private struct ChannelDetailView: View {
             if shouldResumeInMiniPlayer {
                 shouldResumeInMiniPlayer = false
                 isMiniPlayerActive = true
-                if let source = sourceOrNil {
-                    Task {
-                        try? await Task.sleep(for: .milliseconds(250))
-                        await playerController.startPlayback(source: source)
-                    }
-                }
             }
         }
         .task {
@@ -582,6 +576,14 @@ private struct ChannelDetailView: View {
                 VLCVideoSurfaceView(mediaPlayer: playerController.mediaPlayer)
                     .frame(minHeight: 210)
                     .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    .onAppear {
+                        if let source = sourceOrNil {
+                            Task {
+                                try? await Task.sleep(for: .milliseconds(220))
+                                await playerController.startPlayback(source: source)
+                            }
+                        }
+                    }
 
                 HStack(spacing: 12) {
                     Button {

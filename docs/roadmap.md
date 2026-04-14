@@ -28,6 +28,7 @@ These are the items being grouped together for the next round of testing:
 - `[~]` Primary player control behaves as play / pause / retry based on state
 - `[~]` One controlled auto-reconnect when playback stalls in opening/buffering
 - `[~]` Visible reconnect feedback in the fullscreen player
+- `[~]` In-player diagnostics panel for stream host, container, probe, and reconnect state
 
 ### How To Test Current Batch
 
@@ -97,6 +98,11 @@ These are the items being grouped together for the next round of testing:
 - Confirm it attempts one automatic retry instead of looping forever.
 - If playback still fails, confirm the final message makes it clear that reconnect did not recover the stream.
 
+12. Diagnostics panel
+- Open fullscreen playback and tap the new info button.
+- Confirm the diagnostics panel shows host, scheme, container, probe summary, and reconnect count.
+- Confirm the panel helps identify whether the failure is transport, host, or playback-related.
+
 ## Phase 1: Stable Live TV MVP
 
 - `[x]` M3U URL loading
@@ -130,7 +136,7 @@ These are the items being grouped together for the next round of testing:
 - `[~]` Better buffering recovery logic
 - `[~]` Stream retry / reconnect policy
 - `[~]` Visible buffering / reconnect feedback
-- `[ ]` Playback diagnostics that help with provider-specific failures
+- `[~]` Playback diagnostics that help with provider-specific failures
 - `[ ]` Audio/subtitle track controls where available
 - `[~]` AirPlay / route picker
 - `[~]` Now Playing / remote command integration

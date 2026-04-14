@@ -13,13 +13,13 @@ final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLC
     @Published var stateDescription = "Ready"
     @Published var probeSummary: String?
     @Published var transportSummary: String?
+    @Published private(set) var reconnectAttemptCount = 0
     @Published private(set) var currentSource: PlaybackSource?
     @Published private(set) var currentTitle = "1xtream-m3u"
 
     let mediaPlayer = VLCMediaPlayer()
     private let session: URLSession
     private var bufferingRecoveryTask: Task<Void, Never>?
-    private var reconnectAttemptCount = 0
     private let maxReconnectAttempts = 1
 
     override init() {

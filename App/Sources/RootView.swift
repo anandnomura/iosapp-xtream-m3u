@@ -852,6 +852,7 @@ private struct FullScreenPlayerView: View {
     let onNextChannel: () -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var controlsVisible = true
+    @State private var diagnosticsVisible = false
     @State private var autoHideTask: Task<Void, Never>?
 
     var body: some View {
@@ -877,6 +878,16 @@ private struct FullScreenPlayerView: View {
                 .padding(.top, 10)
                 .padding(.bottom, 20)
                 .transition(.opacity)
+            }
+
+            if diagnosticsVisible {
+                VStack {
+                    Spacer()
+                    diagnosticsPanel
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, controlsVisible ? 186 : 32)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
             }
         }
         .statusBarHidden(true)
@@ -954,6 +965,17 @@ private struct FullScreenPlayerView: View {
                     .background(.black.opacity(0.45), in: Circle())
             }
 
+            Button {
+                diagnosticsVisible.toggle()
+                revealControls()
+            } label: {
+                Image(systemName: diagnosticsVisible ? "info.circle.fill" : "info.circle")
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 42, height: 42)
+                    .background(.black.opacity(0.45), in: Circle())
+            }
+
             AirPlayRoutePicker()
                 .frame(width: 42, height: 42)
                 .background(.black.opacity(0.45), in: Circle())
@@ -1019,6 +1041,52 @@ private struct FullScreenPlayerView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.black.opacity(0.52), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .padding(.horizontal, 20)
+    }
+
+    private var diagnosticsPanel: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Playback Diagnostics")
+                .font(.headline.weight(.bold))
+                .foregroundStyle(.white)
+
+            diagnosticRow("State", value: playerController.stateDescription)
+            diagnosticRow("Channel", value: title)
+            diagnosticRow("Host", value: source?.url.host ?? "Unknown")
+            diagnosticRow("Scheme", value: source?.url.scheme?.uppercased() ?? "Unknown")
+            diagnosticRow("Container", value: source?.containerHint?.uppercased() ?? "Unknown")
+            diagnosticRow("Reconnects", value: "\(playerController.reconnectAttemptCount)")
+
+            if let probeSummary = playerController.probeSummary {
+                diagnosticRow("Probe", value: probeSummary)
+            }
+
+            if let transportSummary = playerController.transportSummary {
+                diagnosticRow("Transport", value: transportSummary)
+            }
+
+            if let errorMessage = playerController.errorMessage {
+                diagnosticRow("Error", value: errorMessage)
+            }
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AppPalette.card.opacity(0.96), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        }
+    }
+
+    private func diagnosticRow(_ label: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label.uppercased())
+                .font(.caption2.weight(.heavy))
+                .foregroundStyle(AppPalette.secondaryText)
+            Text(value)
+                .font(.caption)
+                .foregroundStyle(.white)
+                .textSelection(.enabled)
+        }
     }
 
     private func fullscreenButton(_ title: String, systemImage: String, fill: Bool) -> some View {

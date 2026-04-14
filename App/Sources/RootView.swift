@@ -334,6 +334,7 @@ struct RootView: View {
                             "http://example.com/get.php?...&type=m3u_plus&output=ts",
                             text: $viewModel.m3uURLString,
                             focused: .m3uURL,
+                            onPaste: viewModel.pasteIntoM3UURL,
                             submitLabel: .next
                         ) {
                             focusedField = .guideURL
@@ -344,6 +345,7 @@ struct RootView: View {
                             "https://example.com/guide.xml",
                             text: $viewModel.guideURLString,
                             focused: .guideURL,
+                            onPaste: viewModel.pasteIntoGuideURL,
                             submitLabel: .done
                         ) {
                             focusedField = nil
@@ -356,6 +358,7 @@ struct RootView: View {
                             "provider.example.com",
                             text: $viewModel.xtreamHostString,
                             focused: .xtreamHost,
+                            onPaste: viewModel.pasteIntoXtreamHost,
                             submitLabel: .next
                         ) {
                             focusedField = .xtreamUsername
@@ -368,6 +371,7 @@ struct RootView: View {
                             text: $viewModel.xtreamUsername,
                             focused: .xtreamUsername,
                             keyboardType: .default,
+                            onPaste: viewModel.pasteIntoXtreamUsername,
                             submitLabel: .next
                         ) {
                             focusedField = .xtreamPassword
@@ -393,6 +397,17 @@ struct RootView: View {
                             }
 
                             Button {
+                                if let value = UIPasteboard.general.string, !value.isEmpty {
+                                    viewModel.pasteIntoXtreamPassword(value)
+                                }
+                            } label: {
+                                Text("Paste")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(AppPalette.mint)
+                            }
+                            .buttonStyle(.plain)
+
+                            Button {
                                 revealsXtreamPassword.toggle()
                             } label: {
                                 Image(systemName: revealsXtreamPassword ? "eye.slash.fill" : "eye.fill")
@@ -407,6 +422,7 @@ struct RootView: View {
                             "https://example.com/guide.xml",
                             text: $viewModel.guideURLString,
                             focused: .guideURL,
+                            onPaste: viewModel.pasteIntoGuideURL,
                             submitLabel: .done
                         ) {
                             focusedField = nil
@@ -806,6 +822,7 @@ struct RootView: View {
         text: Binding<String>,
         focused: SourceInputField,
         keyboardType: UIKeyboardType = .URL,
+        onPaste: ((String) -> Void)? = nil,
         submitLabel: SubmitLabel,
         onSubmit: @escaping () -> Void
     ) -> some View {
@@ -821,7 +838,11 @@ struct RootView: View {
 
             Button("Paste") {
                 if let value = UIPasteboard.general.string, !value.isEmpty {
-                    text.wrappedValue = value
+                    if let onPaste {
+                        onPaste(value)
+                    } else {
+                        text.wrappedValue = value
+                    }
                 }
             }
             .font(.caption.weight(.bold))

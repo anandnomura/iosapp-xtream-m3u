@@ -1,4 +1,5 @@
 import MobileVLCKit
+import OSLog
 import IPTVDomain
 import SwiftUI
 import UIKit
@@ -77,6 +78,7 @@ final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLC
     @Published private(set) var currentTitle = "1xtream-m3u"
 
     let mediaPlayer = VLCMediaPlayer()
+    private let logger = Logger(subsystem: "com.bl.1xtream-m3u", category: "playback")
     private let session: URLSession
     private var bufferingRecoveryTask: Task<Void, Never>?
     private var probeTask: Task<Void, Never>?
@@ -116,6 +118,7 @@ final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLC
         currentPlaybackProfile = profile
         transportSummary = "Profile: \(profile.label) • Cache \(profile.liveCachingMs)ms"
         stateDescription = "Opening stream..."
+        logger.info("Starting playback title=\(self.currentTitle, privacy: .public) profile=\(profile.label, privacy: .public) url=\(source.url.absoluteString, privacy: .private(mask: .hash))")
         MediaSessionCoordinator.shared.updateNowPlaying(title: currentTitle, stateDescription: stateDescription)
         bufferingRecoveryTask?.cancel()
         probeTask?.cancel()
@@ -221,9 +224,9 @@ final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLC
     }
 
     nonisolated func mediaPlayerStateChanged(_ notification: Notification) {
-        let state = mediaPlayer.state
-
-        DispatchQueue.main.async {
+        Task { @MainActor in
+            let state = self.mediaPlayer.state
+            self.logger.debug("Player state changed to \(String(describing: state.rawValue), privacy: .public)")
             switch state {
             case .opening:
                 self.stateDescription = "Opening stream..."
@@ -258,7 +261,8 @@ final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLC
                    self.currentSource != nil {
                     self.reconnectAttemptCount += 1
                     self.stateDescription = "Reconnecting..."
-                    self.transportSummary = "Playback error. Retrying stream (\(self.reconnectAttemptCount)/\(self.activeMaxReconnectAttempts)) using \(self.currentPlaybackProfile?.label ?? "default") profile."
+                    self.transportSummary = "Retry \(self.reconnectAttemptCount)/\(self.activeMaxReconnectAttempts) • \(self.currentPlaybackProfile?.label ?? "Default")"
+                    self.logger.notice("Playback error; retry \(self.reconnectAttemptCount)/\(self.activeMaxReconnectAttempts) profile=\(self.currentPlaybackProfile?.label ?? "Default", privacy: .public)")
                     Task {
                         await self.retryCurrentStreamAfterDelay()
                     }
@@ -268,7 +272,8 @@ final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLC
 
                 self.stateDescription = "Playback failed"
                 self.errorMessage = "VLC could not play this stream. The source is loading correctly, but the media format or server response still needs player-side compatibility work."
-                self.transportSummary = "Automatic reconnect did not recover the stream."
+                self.transportSummary = "Stream recovery did not succeed."
+                self.logger.error("Playback failed after retries profile=\(self.currentPlaybackProfile?.label ?? "Default", privacy: .public)")
             default:
                 self.stateDescription = "Ready"
                 self.bufferingRecoveryTask?.cancel()
@@ -303,7 +308,8 @@ final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLC
                 let stalledState = self.stateDescription
                 self.reconnectAttemptCount += 1
                 self.stateDescription = "Reconnecting..."
-                self.transportSummary = "The stream stayed in \(stalledState.lowercased()) too long. Retrying (\(self.reconnectAttemptCount)/\(self.activeMaxReconnectAttempts)) with \(self.currentPlaybackProfile?.label ?? "default") profile."
+                self.transportSummary = "Retry \(self.reconnectAttemptCount)/\(self.activeMaxReconnectAttempts) • \(self.currentPlaybackProfile?.label ?? "Default")"
+                self.logger.notice("Stalled in \(stalledState, privacy: .public); retry \(self.reconnectAttemptCount)/\(self.activeMaxReconnectAttempts) profile=\(self.currentPlaybackProfile?.label ?? "Default", privacy: .public)")
 
                 Task {
                     await self.retryCurrentStreamAfterDelay()
@@ -318,6 +324,7 @@ final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLC
         }
 
         let retryDelay = currentPlaybackProfile?.retryDelayMilliseconds ?? 350
+        logger.debug("Retrying stream after \(retryDelay, privacy: .public)ms")
         try? await Task.sleep(for: .milliseconds(retryDelay))
         await startPlayback(source: currentSource, title: currentTitle)
     }
@@ -375,7 +382,7 @@ final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLC
             break
         }
 
-        return "Stream reachable: HTTP \(httpResponse.statusCode)"
+        return "HTTP \(httpResponse.statusCode)"
     }
 
     private func friendlyProbeMessage(for error: Error, url: URL) -> String {

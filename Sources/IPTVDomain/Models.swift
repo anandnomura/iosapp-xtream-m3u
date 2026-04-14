@@ -192,3 +192,51 @@ public struct RecentPlayback: Identifiable, Codable, Equatable, Hashable, Sendab
         self.watchedAt = watchedAt
     }
 }
+
+public struct EPGChannel: Identifiable, Codable, Equatable, Hashable, Sendable {
+    public var id: String
+    public var displayName: String
+
+    public init(id: String, displayName: String) {
+        self.id = id
+        self.displayName = displayName
+    }
+}
+
+public struct EPGProgramme: Identifiable, Codable, Equatable, Hashable, Sendable {
+    public var id: String
+    public var channelID: String
+    public var title: String
+    public var subtitle: String?
+    public var summary: String?
+    public var startDate: Date
+    public var endDate: Date
+
+    public init(
+        id: String,
+        channelID: String,
+        title: String,
+        subtitle: String? = nil,
+        summary: String? = nil,
+        startDate: Date,
+        endDate: Date
+    ) {
+        self.id = id
+        self.channelID = channelID
+        self.title = title
+        self.subtitle = subtitle
+        self.summary = summary
+        self.startDate = startDate
+        self.endDate = endDate
+    }
+}
+
+public struct ParsedEPG: Codable, Equatable, Hashable, Sendable {
+    public var channels: [EPGChannel]
+    public var programmes: [EPGProgramme]
+
+    public init(channels: [EPGChannel], programmes: [EPGProgramme]) {
+        self.channels = channels
+        self.programmes = programmes
+    }
+}

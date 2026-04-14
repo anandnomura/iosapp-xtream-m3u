@@ -1296,6 +1296,10 @@ private struct SavedProfileCard: View {
     }
 
     private var summaryText: String {
+        if let lastPlayed = record.lastPlayedItemTitle {
+            return "Resume \(lastPlayed)"
+        }
+
         if let lastUpdatedAt = record.lastUpdatedAt {
             return "Updated \(lastUpdatedAt.formatted(date: .abbreviated, time: .shortened))"
         }

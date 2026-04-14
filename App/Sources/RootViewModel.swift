@@ -117,6 +117,7 @@ final class RootViewModel: ObservableObject {
             savedProfiles.remove(at: index)
         }
         persistence.saveProfiles(savedProfiles)
+        persistence.deleteProfileSecrets(ids: ids)
 
         if let activeProfile, ids.contains(activeProfile.id) {
             self.activeProfile = nil

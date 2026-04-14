@@ -26,6 +26,7 @@ final class AppPersistence {
     static let shared = AppPersistence()
 
     private let defaults: UserDefaults
+    private let keychain: KeychainStore
     private let decoder = JSONDecoder()
     private let encoder = JSONEncoder()
 
@@ -35,10 +36,13 @@ final class AppPersistence {
         static let activeProfileID = "app.activeProfileID"
         static let favorites = "app.favorites"
         static let recents = "app.recents"
+        static let xtreamDraftPasswordService = "app.xtream.draft.password"
+        static let xtreamProfilePasswordServicePrefix = "app.xtream.profile.password"
     }
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, keychain: KeychainStore = .shared) {
         self.defaults = defaults
+        self.keychain = keychain
         encoder.outputFormatting = [.sortedKeys]
     }
 
@@ -48,7 +52,9 @@ final class AppPersistence {
             return []
         }
 
-        return records.sorted { lhs, rhs in
+        let hydrated = records.map(hydrateProfileSecrets)
+
+        return hydrated.sorted { lhs, rhs in
             let lhsDate = lhs.lastOpenedAt ?? lhs.lastUpdatedAt ?? lhs.profile.createdAt
             let rhsDate = rhs.lastOpenedAt ?? rhs.lastUpdatedAt ?? rhs.profile.createdAt
             return lhsDate > rhsDate
@@ -56,7 +62,8 @@ final class AppPersistence {
     }
 
     func saveProfiles(_ records: [SavedProfileRecord]) {
-        guard let data = try? encoder.encode(records) else {
+        let sanitized = records.map(storeProfileSecrets)
+        guard let data = try? encoder.encode(sanitized) else {
             return
         }
         defaults.set(data, forKey: Key.savedProfiles)
@@ -67,11 +74,13 @@ final class AppPersistence {
               let draft = try? decoder.decode(SourceDraft.self, from: data) else {
             return nil
         }
-        return draft
+
+        return hydrateDraftSecret(draft)
     }
 
     func saveDraft(_ draft: SourceDraft) {
-        guard let data = try? encoder.encode(draft) else {
+        let sanitized = storeDraftSecret(draft)
+        guard let data = try? encoder.encode(sanitized) else {
             return
         }
         defaults.set(data, forKey: Key.sourceDraft)
@@ -117,5 +126,71 @@ final class AppPersistence {
             return
         }
         defaults.set(data, forKey: Key.recents)
+    }
+
+    func deleteProfileSecrets(ids: [UUID]) {
+        for id in ids {
+            keychain.deletePassword(service: profilePasswordService(for: id), account: "xtreamPassword")
+        }
+    }
+
+    private func hydrateDraftSecret(_ draft: SourceDraft) -> SourceDraft {
+        var hydrated = draft
+        hydrated.xtreamPassword = keychain.loadPassword(service: Key.xtreamDraftPasswordService, account: "xtreamPassword") ?? draft.xtreamPassword
+        return hydrated
+    }
+
+    private func storeDraftSecret(_ draft: SourceDraft) -> SourceDraft {
+        var sanitized = draft
+
+        if draft.xtreamPassword.isEmpty {
+            keychain.deletePassword(service: Key.xtreamDraftPasswordService, account: "xtreamPassword")
+        } else {
+            keychain.savePassword(draft.xtreamPassword, service: Key.xtreamDraftPasswordService, account: "xtreamPassword")
+            sanitized.xtreamPassword = ""
+        }
+
+        return sanitized
+    }
+
+    private func hydrateProfileSecrets(_ record: SavedProfileRecord) -> SavedProfileRecord {
+        guard record.profile.kind == .xtream else {
+            return record
+        }
+
+        var hydrated = record
+        if var credentials = hydrated.profile.xtreamCredentials {
+            let service = profilePasswordService(for: hydrated.id)
+            if let keychainPassword = keychain.loadPassword(service: service, account: "xtreamPassword") {
+                credentials.password = keychainPassword
+            } else if !credentials.password.isEmpty {
+                keychain.savePassword(credentials.password, service: service, account: "xtreamPassword")
+            }
+            hydrated.profile.xtreamCredentials = credentials
+        }
+        return hydrated
+    }
+
+    private func storeProfileSecrets(_ record: SavedProfileRecord) -> SavedProfileRecord {
+        guard record.profile.kind == .xtream else {
+            return record
+        }
+
+        var sanitized = record
+        if var credentials = sanitized.profile.xtreamCredentials {
+            let service = profilePasswordService(for: sanitized.id)
+            if credentials.password.isEmpty {
+                keychain.deletePassword(service: service, account: "xtreamPassword")
+            } else {
+                keychain.savePassword(credentials.password, service: service, account: "xtreamPassword")
+                credentials.password = ""
+            }
+            sanitized.profile.xtreamCredentials = credentials
+        }
+        return sanitized
+    }
+
+    private func profilePasswordService(for id: UUID) -> String {
+        "\(Key.xtreamProfilePasswordServicePrefix).\(id.uuidString)"
     }
 }

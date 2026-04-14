@@ -29,6 +29,7 @@ These are the items being grouped together for the next round of testing:
 - `[~]` One controlled auto-reconnect when playback stalls in opening/buffering
 - `[~]` Visible reconnect feedback in the fullscreen player
 - `[~]` In-player diagnostics panel for stream host, container, probe, and reconnect state
+- `[~]` Xtream passwords moved to Keychain-backed storage
 
 ### How To Test Current Batch
 
@@ -103,6 +104,12 @@ These are the items being grouped together for the next round of testing:
 - Confirm the diagnostics panel shows host, scheme, container, probe summary, and reconnect count.
 - Confirm the panel helps identify whether the failure is transport, host, or playback-related.
 
+13. Keychain-backed Xtream credentials
+- Save an Xtream profile and fully close the app.
+- Reopen the app and confirm the Xtream profile can still be selected and refreshed without retyping the password.
+- Delete the Xtream profile and confirm it disappears from the app.
+- Re-add the same Xtream profile and confirm it behaves like a fresh saved source.
+
 ## Phase 1: Stable Live TV MVP
 
 - `[x]` M3U URL loading
@@ -144,7 +151,7 @@ These are the items being grouped together for the next round of testing:
 ## Phase 4: Persistence and Security
 
 - `[ ]` Move profile and cache storage to SwiftData
-- `[ ]` Move provider credentials to Keychain
+- `[~]` Move provider credentials to Keychain
 - `[ ]` Persist last played channel per profile
 - `[ ]` Persist selected group and browser position
 - `[ ]` Persist favorites in the long-term storage model

@@ -23,6 +23,8 @@ final class RootViewModel: ObservableObject {
 
     @Published private(set) var activeProfile: ProviderProfile?
     @Published private(set) var savedProfiles: [SavedProfileRecord] = []
+    @Published private(set) var favorites: [MediaItem] = []
+    @Published private(set) var recents: [MediaItem] = []
     @Published private(set) var groups: [MediaGroup] = []
     @Published private(set) var items: [MediaItem] = []
     @Published private(set) var lastUpdatedAt: Date?
@@ -97,7 +99,7 @@ final class RootViewModel: ObservableObject {
     func selectProfile(_ record: SavedProfileRecord) {
         activeProfile = record.profile
         groups = record.groups
-        items = record.items
+        items = record.items.map(markFavoriteIfNeeded)
         lastUpdatedAt = record.lastUpdatedAt
         statusMessage = record.groups.isEmpty
             ? "Profile selected. Load or refresh to fetch channels."
@@ -128,6 +130,36 @@ final class RootViewModel: ObservableObject {
 
     func items(in group: MediaGroup) -> [MediaItem] {
         items.filter { $0.groupID == group.id }
+    }
+
+    func isFavorite(_ item: MediaItem) -> Bool {
+        favorites.contains(where: { favorite in
+            favorite.id == item.id && favorite.providerID == item.providerID
+        })
+    }
+
+    func toggleFavorite(_ item: MediaItem) {
+        let key = favoriteKey(for: item)
+
+        if let index = favorites.firstIndex(where: { favoriteKey(for: $0) == key }) {
+            favorites.remove(at: index)
+        } else {
+            var favoriteItem = item
+            favoriteItem.isFavorite = true
+            favorites.insert(favoriteItem, at: 0)
+        }
+
+        persistence.saveFavorites(favorites)
+        applyFavoriteFlagsAcrossState()
+    }
+
+    func registerRecent(_ item: MediaItem) {
+        recents.removeAll(where: { recent in
+            recent.id == item.id && recent.providerID == item.providerID
+        })
+        recents.insert(item, at: 0)
+        recents = Array(recents.prefix(12))
+        persistence.saveRecents(recents)
     }
 
     private func buildProfile() throws -> ProviderProfile {
@@ -209,13 +241,13 @@ final class RootViewModel: ObservableObject {
         }
 
         groups = parsed.groups
-        items = parsed.items
+        items = parsed.items.map(markFavoriteIfNeeded)
         lastUpdatedAt = .now
         upsertSavedProfile(
             SavedProfileRecord(
                 profile: profile,
                 groups: parsed.groups,
-                items: parsed.items,
+                items: items,
                 lastUpdatedAt: .now,
                 lastOpenedAt: .now
             )
@@ -246,6 +278,8 @@ final class RootViewModel: ObservableObject {
 
     private func restorePersistedState() {
         savedProfiles = persistence.loadProfiles()
+        favorites = persistence.loadFavorites()
+        recents = persistence.loadRecents()
 
         if let draft = persistence.loadDraft() {
             sourceMode = SourceMode(rawValue: draft.sourceMode) ?? .m3uURL
@@ -261,6 +295,8 @@ final class RootViewModel: ObservableObject {
            let record = savedProfiles.first(where: { $0.id == activeID }) {
             selectProfile(record)
         }
+
+        applyFavoriteFlagsAcrossState()
     }
 
     private func populateInputs(from profile: ProviderProfile) {
@@ -336,6 +372,32 @@ final class RootViewModel: ObservableObject {
                     && (password == nil || record.profile.xtreamCredentials?.password == password)
             }
         }
+    }
+
+    private func favoriteKey(for item: MediaItem) -> String {
+        "\(item.providerID.uuidString)::\(item.id)"
+    }
+
+    private func markFavoriteIfNeeded(_ item: MediaItem) -> MediaItem {
+        var updated = item
+        updated.isFavorite = isFavorite(item)
+        return updated
+    }
+
+    private func applyFavoriteFlagsAcrossState() {
+        items = items.map(markFavoriteIfNeeded)
+        recents = recents.map(markFavoriteIfNeeded)
+        favorites = favorites.map(markFavoriteIfNeeded)
+
+        savedProfiles = savedProfiles.map { record in
+            var updated = record
+            updated.items = record.items.map(markFavoriteIfNeeded)
+            return updated
+        }
+
+        persistence.saveFavorites(favorites)
+        persistence.saveRecents(recents)
+        persistence.saveProfiles(savedProfiles)
     }
 
     private func friendlyMessage(for error: Error) -> String {

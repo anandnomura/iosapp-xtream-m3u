@@ -22,6 +22,8 @@ Why this stack:
 
 Start with [docs/iptv-app-plan.md](/c:/Users/anand/Downloads/pypgms/iosapp/docs/iptv-app-plan.md) for the full recommendation, research notes, open-source evaluation, and no-Mac deployment path.
 
+Use [docs/roadmap.md](/c:/Users/anand/Downloads/pypgms/iosapp/docs/roadmap.md) as the live execution tracker for what is done, what is in the current test batch, and what comes next.
+
 ## Remote build status
 
 This repo now includes a GitHub Actions workflow at [.github/workflows/swift-package-ci.yml](/c:/Users/anand/Downloads/pypgms/iosapp/.github/workflows/swift-package-ci.yml) that runs the Swift package build and test suite on GitHub-hosted macOS runners.

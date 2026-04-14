@@ -33,6 +33,8 @@ final class AppPersistence {
         static let savedProfiles = "app.savedProfiles"
         static let sourceDraft = "app.sourceDraft"
         static let activeProfileID = "app.activeProfileID"
+        static let favorites = "app.favorites"
+        static let recents = "app.recents"
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -85,5 +87,35 @@ final class AppPersistence {
 
     func saveActiveProfileID(_ id: UUID?) {
         defaults.set(id?.uuidString, forKey: Key.activeProfileID)
+    }
+
+    func loadFavorites() -> [MediaItem] {
+        guard let data = defaults.data(forKey: Key.favorites),
+              let items = try? decoder.decode([MediaItem].self, from: data) else {
+            return []
+        }
+        return items
+    }
+
+    func saveFavorites(_ items: [MediaItem]) {
+        guard let data = try? encoder.encode(items) else {
+            return
+        }
+        defaults.set(data, forKey: Key.favorites)
+    }
+
+    func loadRecents() -> [MediaItem] {
+        guard let data = defaults.data(forKey: Key.recents),
+              let items = try? decoder.decode([MediaItem].self, from: data) else {
+            return []
+        }
+        return items
+    }
+
+    func saveRecents(_ items: [MediaItem]) {
+        guard let data = try? encoder.encode(items) else {
+            return
+        }
+        defaults.set(data, forKey: Key.recents)
     }
 }

@@ -12,6 +12,12 @@ struct RootView: View {
 
                 List {
                     headerSection
+                    if !viewModel.favorites.isEmpty {
+                        favoritesSection
+                    }
+                    if !viewModel.recents.isEmpty {
+                        recentsSection
+                    }
                     if !viewModel.savedProfiles.isEmpty {
                         savedProfilesSection
                     }
@@ -30,7 +36,13 @@ struct RootView: View {
                         Section {
                             ForEach(viewModel.groups) { group in
                                 NavigationLink {
-                                    ChannelListView(group: group, items: viewModel.items(in: group))
+                                    ChannelListView(
+                                        group: group,
+                                        items: viewModel.items(in: group),
+                                        isFavorite: viewModel.isFavorite,
+                                        onToggleFavorite: viewModel.toggleFavorite,
+                                        onOpenItem: viewModel.registerRecent
+                                    )
                                 } label: {
                                     GroupRow(group: group, count: viewModel.items(in: group).count)
                                 }
@@ -79,6 +91,70 @@ struct RootView: View {
                     StatCapsule(title: "Profiles", value: "\(viewModel.savedProfiles.count)")
                     StatCapsule(title: "Groups", value: "\(viewModel.groups.count)")
                     StatCapsule(title: "Channels", value: "\(viewModel.items.count)")
+                }
+            }
+            .cardStyle()
+        }
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+    }
+
+    private var favoritesSection: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 16) {
+                sectionHeader("Favorites", subtitle: "Jump back into the channels you keep coming back to")
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 14) {
+                        ForEach(viewModel.favorites.prefix(12)) { item in
+                            NavigationLink {
+                                ChannelDetailView(
+                                    playlist: [item],
+                                    initialIndex: 0,
+                                    groupName: item.groupID ?? "Favorites",
+                                    isFavorite: viewModel.isFavorite,
+                                    onToggleFavorite: viewModel.toggleFavorite,
+                                    onOpenItem: viewModel.registerRecent
+                                )
+                            } label: {
+                                MediaShortcutCard(item: item, accent: AppPalette.gold)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+            .cardStyle()
+        }
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+    }
+
+    private var recentsSection: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 16) {
+                sectionHeader("Recent Channels", subtitle: "Pick up where you left off without reopening a group first")
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 14) {
+                        ForEach(viewModel.recents.prefix(12)) { item in
+                            NavigationLink {
+                                ChannelDetailView(
+                                    playlist: [item],
+                                    initialIndex: 0,
+                                    groupName: item.groupID ?? "Recent",
+                                    isFavorite: viewModel.isFavorite,
+                                    onToggleFavorite: viewModel.toggleFavorite,
+                                    onOpenItem: viewModel.registerRecent
+                                )
+                            } label: {
+                                MediaShortcutCard(item: item, accent: AppPalette.sky)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.vertical, 2)
                 }
             }
             .cardStyle()
@@ -330,6 +406,9 @@ struct RootView: View {
 private struct ChannelListView: View {
     let group: MediaGroup
     let items: [MediaItem]
+    let isFavorite: (MediaItem) -> Bool
+    let onToggleFavorite: (MediaItem) -> Void
+    let onOpenItem: (MediaItem) -> Void
     @State private var selectedRoute: ChannelRoute?
     @State private var searchText = ""
 
@@ -340,10 +419,15 @@ private struct ChannelListView: View {
             List(filteredItems) { item in
                 Button {
                     if let index = filteredItems.firstIndex(of: item) {
+                        onOpenItem(item)
                         selectedRoute = ChannelRoute(index: index)
                     }
                 } label: {
-                    ChannelRow(item: item)
+                    ChannelRow(
+                        item: item,
+                        isFavorite: isFavorite(item),
+                        onToggleFavorite: { onToggleFavorite(item) }
+                    )
                 }
                 .buttonStyle(.plain)
                 .listRowBackground(Color.clear)
@@ -357,7 +441,14 @@ private struct ChannelListView: View {
         .toolbarBackground(.hidden, for: .navigationBar)
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search channels")
         .navigationDestination(item: $selectedRoute) { route in
-            ChannelDetailView(playlist: filteredItems, initialIndex: route.index, groupName: group.name)
+            ChannelDetailView(
+                playlist: filteredItems,
+                initialIndex: route.index,
+                groupName: group.name,
+                isFavorite: isFavorite,
+                onToggleFavorite: onToggleFavorite,
+                onOpenItem: onOpenItem
+            )
         }
     }
 
@@ -383,14 +474,27 @@ private struct ChannelDetailView: View {
     let playlist: [MediaItem]
     let initialIndex: Int
     let groupName: String
+    let isFavorite: (MediaItem) -> Bool
+    let onToggleFavorite: (MediaItem) -> Void
+    let onOpenItem: (MediaItem) -> Void
     @StateObject private var playerController = VLCPlayerController()
     @State private var currentIndex: Int
     @Environment(\.dismiss) private var dismiss
 
-    init(playlist: [MediaItem], initialIndex: Int, groupName: String) {
+    init(
+        playlist: [MediaItem],
+        initialIndex: Int,
+        groupName: String,
+        isFavorite: @escaping (MediaItem) -> Bool,
+        onToggleFavorite: @escaping (MediaItem) -> Void,
+        onOpenItem: @escaping (MediaItem) -> Void
+    ) {
         self.playlist = playlist
         self.initialIndex = initialIndex
         self.groupName = groupName
+        self.isFavorite = isFavorite
+        self.onToggleFavorite = onToggleFavorite
+        self.onOpenItem = onOpenItem
         _currentIndex = State(initialValue: initialIndex)
     }
 
@@ -400,13 +504,19 @@ private struct ChannelDetailView: View {
             source: sourceOrNil,
             hasPreviousChannel: currentIndex > 0,
             hasNextChannel: currentIndex < playlist.count - 1,
+            isFavorite: isFavorite(currentItem),
             playerController: playerController
         ) {
             dismissToBrowser()
+        } onToggleFavorite: {
+            onToggleFavorite(currentItem)
         } onPreviousChannel: {
             moveChannel(by: -1)
         } onNextChannel: {
             moveChannel(by: 1)
+        }
+        .onAppear {
+            onOpenItem(currentItem)
         }
         .onDisappear {
             playerController.stop()
@@ -429,6 +539,7 @@ private struct ChannelDetailView: View {
         }
 
         currentIndex = nextIndex
+        onOpenItem(currentItem)
         if let source = currentItem.source {
             Task {
                 await playerController.startPlayback(source: source)
@@ -448,8 +559,10 @@ private struct FullScreenPlayerView: View {
     let source: PlaybackSource?
     let hasPreviousChannel: Bool
     let hasNextChannel: Bool
+    let isFavorite: Bool
     @ObservedObject var playerController: VLCPlayerController
     let onBackToBrowser: () -> Void
+    let onToggleFavorite: () -> Void
     let onPreviousChannel: () -> Void
     let onNextChannel: () -> Void
     @Environment(\.dismiss) private var dismiss
@@ -531,6 +644,17 @@ private struct FullScreenPlayerView: View {
                 Text(playerController.stateDescription)
                     .font(.caption)
                     .foregroundStyle(.white.opacity(0.8))
+            }
+
+            Button {
+                onToggleFavorite()
+                revealControls()
+            } label: {
+                Image(systemName: isFavorite ? "heart.fill" : "heart")
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(isFavorite ? AppPalette.gold : .white)
+                    .frame(width: 42, height: 42)
+                    .background(.black.opacity(0.45), in: Circle())
             }
 
             Spacer()
@@ -779,6 +903,8 @@ private struct GroupRow: View {
 
 private struct ChannelRow: View {
     let item: MediaItem
+    let isFavorite: Bool
+    let onToggleFavorite: () -> Void
 
     var body: some View {
         HStack(spacing: 14) {
@@ -811,8 +937,73 @@ private struct ChannelRow: View {
             }
 
             Spacer()
+
+            Button {
+                onToggleFavorite()
+            } label: {
+                Image(systemName: isFavorite ? "heart.fill" : "heart")
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(isFavorite ? AppPalette.gold : AppPalette.secondaryText)
+                    .frame(width: 40, height: 40)
+                    .background(AppPalette.fieldFill, in: Circle())
+            }
+            .buttonStyle(.plain)
         }
         .cardStyle()
+    }
+}
+
+private struct MediaShortcutCard: View {
+    let item: MediaItem
+    let accent: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [accent.opacity(0.95), AppPalette.teal.opacity(0.85)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 46, height: 46)
+                    .overlay {
+                        Image(systemName: item.kind == .live ? "play.tv.fill" : "film.fill")
+                            .font(.headline.weight(.black))
+                            .foregroundStyle(.white)
+                    }
+
+                Spacer()
+
+                if item.isFavorite {
+                    Image(systemName: "heart.fill")
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(AppPalette.gold)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(item.title)
+                    .font(.headline.weight(.black))
+                    .foregroundStyle(.white)
+                    .lineLimit(2)
+
+                Text(item.groupID ?? "Saved Channel")
+                    .font(.caption)
+                    .foregroundStyle(AppPalette.secondaryText)
+                    .lineLimit(1)
+            }
+        }
+        .padding(18)
+        .frame(width: 220, alignment: .leading)
+        .background(AppPalette.card.opacity(0.96), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.24), radius: 18, x: 0, y: 10)
     }
 }
 

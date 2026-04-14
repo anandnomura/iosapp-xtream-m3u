@@ -1003,6 +1003,12 @@ private struct FullScreenPlayerView: View {
                     .foregroundStyle(.white.opacity(0.8))
             }
 
+            if let transportSummary = playerController.transportSummary {
+                Text(transportSummary)
+                    .font(.caption)
+                    .foregroundStyle(AppPalette.gold)
+            }
+
             if let errorMessage = playerController.errorMessage {
                 Text(errorMessage)
                     .font(.caption)

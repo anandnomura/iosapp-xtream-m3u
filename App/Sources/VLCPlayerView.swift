@@ -12,11 +12,15 @@ final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLC
     @Published var errorMessage: String?
     @Published var stateDescription = "Ready"
     @Published var probeSummary: String?
+    @Published var transportSummary: String?
     @Published private(set) var currentSource: PlaybackSource?
     @Published private(set) var currentTitle = "1xtream-m3u"
 
     let mediaPlayer = VLCMediaPlayer()
     private let session: URLSession
+    private var bufferingRecoveryTask: Task<Void, Never>?
+    private var reconnectAttemptCount = 0
+    private let maxReconnectAttempts = 1
 
     override init() {
         let configuration = URLSessionConfiguration.default
@@ -45,8 +49,10 @@ final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLC
         }
         errorMessage = nil
         probeSummary = nil
+        transportSummary = nil
         stateDescription = "Opening stream..."
         MediaSessionCoordinator.shared.updateNowPlaying(title: currentTitle, stateDescription: stateDescription)
+        bufferingRecoveryTask?.cancel()
 
         do {
             probeSummary = try await probe(url: source.url)
@@ -73,6 +79,9 @@ final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLC
         mediaPlayer.media = nil
         currentSource = nil
         stateDescription = "Stopped"
+        transportSummary = nil
+        reconnectAttemptCount = 0
+        bufferingRecoveryTask?.cancel()
         MediaSessionCoordinator.shared.clearNowPlaying()
     }
 
@@ -90,6 +99,7 @@ final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLC
             return
         }
 
+        reconnectAttemptCount = 0
         await startPlayback(source: currentSource, title: currentTitle)
     }
 
@@ -121,24 +131,87 @@ final class VLCPlayerController: NSObject, ObservableObject, @preconcurrency VLC
             switch state {
             case .opening:
                 self.stateDescription = "Opening stream..."
+                self.scheduleBufferingRecoveryIfNeeded()
             case .buffering:
                 self.stateDescription = "Buffering..."
+                self.scheduleBufferingRecoveryIfNeeded()
             case .playing:
                 self.stateDescription = "Playing"
+                self.transportSummary = nil
+                self.reconnectAttemptCount = 0
+                self.bufferingRecoveryTask?.cancel()
             case .paused:
                 self.stateDescription = "Paused"
+                self.bufferingRecoveryTask?.cancel()
             case .stopped:
                 self.stateDescription = "Stopped"
+                self.transportSummary = nil
+                self.bufferingRecoveryTask?.cancel()
             case .ended:
                 self.stateDescription = "Playback ended"
+                self.transportSummary = nil
+                self.bufferingRecoveryTask?.cancel()
             case .error:
+                self.bufferingRecoveryTask?.cancel()
+                if self.reconnectAttemptCount < self.maxReconnectAttempts,
+                   self.currentSource != nil {
+                    self.reconnectAttemptCount += 1
+                    self.stateDescription = "Reconnecting..."
+                    self.transportSummary = "Playback stalled. Retrying stream (\(self.reconnectAttemptCount)/\(self.maxReconnectAttempts))."
+                    Task {
+                        await self.retryCurrentStreamAfterDelay()
+                    }
+                    MediaSessionCoordinator.shared.updateNowPlaying(title: self.currentTitle, stateDescription: self.stateDescription)
+                    return
+                }
+
                 self.stateDescription = "Playback failed"
                 self.errorMessage = "VLC could not play this stream. The source is loading correctly, but the media format or server response still needs player-side compatibility work."
+                self.transportSummary = "Automatic reconnect did not recover the stream."
             default:
                 self.stateDescription = "Ready"
+                self.bufferingRecoveryTask?.cancel()
             }
             MediaSessionCoordinator.shared.updateNowPlaying(title: self.currentTitle, stateDescription: self.stateDescription)
         }
+    }
+
+    private func scheduleBufferingRecoveryIfNeeded() {
+        guard currentSource != nil else {
+            return
+        }
+
+        bufferingRecoveryTask?.cancel()
+        bufferingRecoveryTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(8))
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                guard let self,
+                      self.currentSource != nil,
+                      (self.stateDescription == "Buffering..." || self.stateDescription == "Opening stream..."),
+                      self.reconnectAttemptCount < self.maxReconnectAttempts else {
+                    return
+                }
+
+                let stalledState = self.stateDescription
+                self.reconnectAttemptCount += 1
+                self.stateDescription = "Reconnecting..."
+                self.transportSummary = "The stream stayed in \(stalledState.lowercased()) too long. Retrying (\(self.reconnectAttemptCount)/\(self.maxReconnectAttempts))."
+
+                Task {
+                    await self.retryCurrentStreamAfterDelay()
+                }
+            }
+        }
+    }
+
+    private func retryCurrentStreamAfterDelay() async {
+        guard let currentSource else {
+            return
+        }
+
+        try? await Task.sleep(for: .seconds(1))
+        await startPlayback(source: currentSource, title: currentTitle)
     }
 
     private func probe(url: URL) async throws -> String {

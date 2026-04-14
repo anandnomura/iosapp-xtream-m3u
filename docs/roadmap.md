@@ -26,6 +26,8 @@ These are the items being grouped together for the next round of testing:
 - `[~]` Lock screen / Control Center media metadata
 - `[~]` Remote play, pause, next, and previous command handling
 - `[~]` Primary player control behaves as play / pause / retry based on state
+- `[~]` One controlled auto-reconnect when playback stalls in opening/buffering
+- `[~]` Visible reconnect feedback in the fullscreen player
 
 ### How To Test Current Batch
 
@@ -89,6 +91,12 @@ These are the items being grouped together for the next round of testing:
 - If there is a next/previous channel available, confirm those controls switch channels.
 - Open fullscreen and confirm the AirPlay route picker is visible in the top bar.
 
+11. Reconnect behavior
+- Start a stream that sometimes buffers or stalls.
+- Confirm the player shows a reconnect message if it stays in opening/buffering too long.
+- Confirm it attempts one automatic retry instead of looping forever.
+- If playback still fails, confirm the final message makes it clear that reconnect did not recover the stream.
+
 ## Phase 1: Stable Live TV MVP
 
 - `[x]` M3U URL loading
@@ -119,9 +127,9 @@ These are the items being grouped together for the next round of testing:
 
 ## Phase 3: Player Quality
 
-- `[ ]` Better buffering recovery logic
-- `[ ]` Stream retry / reconnect policy
-- `[ ]` Visible buffering / reconnect feedback
+- `[~]` Better buffering recovery logic
+- `[~]` Stream retry / reconnect policy
+- `[~]` Visible buffering / reconnect feedback
 - `[ ]` Playback diagnostics that help with provider-specific failures
 - `[ ]` Audio/subtitle track controls where available
 - `[~]` AirPlay / route picker

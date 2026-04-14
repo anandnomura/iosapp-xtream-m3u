@@ -19,6 +19,45 @@ These are the items being grouped together for the next round of testing:
 - `[~]` Search across all loaded content from the home screen
 - `[~]` Cleaner empty and browse states on the home screen
 
+### How To Test Current Batch
+
+1. Favorites persistence
+- Load a provider and open any group.
+- Tap the heart on 2-3 channels.
+- Confirm those channels appear in the `Favorites` rail on the home screen.
+- Force close the app and relaunch it.
+- Confirm the same favorites are still present and still marked with hearts in channel lists.
+
+2. Recents persistence
+- Open 2-3 channels from different groups.
+- Back out to the home screen.
+- Confirm those channels appear in the `Recent Channels` rail in most-recent-first order.
+- Force close the app and relaunch it.
+- Confirm the same recent items are still present.
+
+3. Channel/browser wiring
+- In a group list, favorite and unfavorite a channel from the row heart button.
+- Open a channel and toggle favorite again from the player heart button.
+- Go back to the group list and confirm the state stayed in sync.
+- Open a recent/favorite shortcut from the home screen and confirm it starts the player flow.
+
+4. Home shortcuts
+- Confirm `Favorites` and `Recent Channels` appear above the source management section.
+- Confirm tapping a shortcut opens playback for that item.
+- Confirm the rails disappear naturally if there is no data for them.
+
+5. Home search
+- Load a provider with multiple groups.
+- Search for a known channel from the home screen search box.
+- Confirm matching channels appear even if they are in different groups.
+- Tap a result and confirm it opens the player flow.
+- Clear the search and confirm the normal home sections return.
+
+6. Empty / browse states
+- Fresh install or delete all saved profiles if practical.
+- Confirm the app shows a useful empty state instead of only raw forms.
+- After loading a provider, confirm live groups appear sorted and the home screen still feels usable.
+
 ## Phase 1: Stable Live TV MVP
 
 - `[x]` M3U URL loading

@@ -30,6 +30,7 @@ These are the items being grouped together for the next round of testing:
 - `[~]` Visible reconnect feedback in the fullscreen player
 - `[~]` In-player diagnostics panel for stream host, container, probe, and reconnect state
 - `[~]` Xtream passwords moved to Keychain-backed storage
+- `[~]` Per-profile last played channel and last selected group memory
 
 ### How To Test Current Batch
 
@@ -110,6 +111,13 @@ These are the items being grouped together for the next round of testing:
 - Delete the Xtream profile and confirm it disappears from the app.
 - Re-add the same Xtream profile and confirm it behaves like a fresh saved source.
 
+14. Per-profile resume state
+- Load a provider and open a specific group.
+- Play a channel from that group, then return to the `Source` section.
+- Confirm the profile shows a `Resume Last Channel` card.
+- Tap it and confirm it opens the last played channel directly.
+- Switch to another provider profile and confirm each profile keeps its own last played channel / last group memory.
+
 ## Phase 1: Stable Live TV MVP
 
 - `[x]` M3U URL loading
@@ -152,8 +160,8 @@ These are the items being grouped together for the next round of testing:
 
 - `[ ]` Move profile and cache storage to SwiftData
 - `[~]` Move provider credentials to Keychain
-- `[ ]` Persist last played channel per profile
-- `[ ]` Persist selected group and browser position
+- `[~]` Persist last played channel per profile
+- `[~]` Persist selected group and browser position
 - `[ ]` Persist favorites in the long-term storage model
 - `[ ]` Persist recents in the long-term storage model
 

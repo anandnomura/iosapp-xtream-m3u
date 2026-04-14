@@ -517,6 +517,25 @@ struct RootView: View {
                         .foregroundStyle(AppPalette.secondaryText)
                 }
 
+                if let resumeItem = viewModel.lastPlayedItem(for: profile) {
+                    NavigationLink {
+                        ChannelDetailView(
+                            playlist: [resumeItem],
+                            initialIndex: 0,
+                            groupName: resumeItem.groupID ?? "Resume",
+                            isFavorite: viewModel.isFavorite,
+                            onToggleFavorite: viewModel.toggleFavorite,
+                            onOpenItem: viewModel.registerRecent
+                        )
+                    } label: {
+                        ResumeCard(
+                            title: resumeItem.title,
+                            subtitle: viewModel.lastSelectedGroup(for: profile)?.name ?? resumeItem.groupID ?? "Continue watching"
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+
                 HStack(spacing: 12) {
                     Button {
                         Task { await viewModel.refreshActiveProfile() }
@@ -627,7 +646,8 @@ struct RootView: View {
                                 items: viewModel.items(in: group),
                                 isFavorite: viewModel.isFavorite,
                                 onToggleFavorite: viewModel.toggleFavorite,
-                                onOpenItem: viewModel.registerRecent
+                                onOpenItem: viewModel.registerRecent,
+                                onOpenGroup: viewModel.recordGroupVisit
                             )
                         } label: {
                             GroupRow(group: group, count: viewModel.items(in: group).count)
@@ -694,6 +714,7 @@ private struct ChannelListView: View {
     let isFavorite: (MediaItem) -> Bool
     let onToggleFavorite: (MediaItem) -> Void
     let onOpenItem: (MediaItem) -> Void
+    let onOpenGroup: (MediaGroup) -> Void
     @State private var selectedRoute: ChannelRoute?
     @State private var searchText = ""
 
@@ -725,6 +746,9 @@ private struct ChannelListView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search channels")
+        .onAppear {
+            onOpenGroup(group)
+        }
         .navigationDestination(item: $selectedRoute) { route in
             ChannelDetailView(
                 playlist: filteredItems,
@@ -746,6 +770,45 @@ private struct ChannelListView: View {
         return items.filter { item in
             item.title.localizedCaseInsensitiveContains(term)
         }
+    }
+}
+
+private struct ResumeCard: View {
+    let title: String
+    let subtitle: String
+
+    var body: some View {
+        HStack(spacing: 14) {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(LinearGradient(colors: [AppPalette.gold, AppPalette.mint], startPoint: .topLeading, endPoint: .bottomTrailing))
+                .frame(width: 52, height: 52)
+                .overlay {
+                    Image(systemName: "play.fill")
+                        .font(.title3.weight(.black))
+                        .foregroundStyle(.black.opacity(0.82))
+                }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Resume Last Channel")
+                    .font(.caption.weight(.heavy))
+                    .foregroundStyle(AppPalette.gold)
+                Text(title)
+                    .font(.headline.weight(.black))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(AppPalette.secondaryText)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            Image(systemName: "arrow.right.circle.fill")
+                .font(.title2.weight(.bold))
+                .foregroundStyle(AppPalette.mint)
+        }
+        .cardStyle()
     }
 }
 

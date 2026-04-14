@@ -133,6 +133,24 @@ final class RootViewModel: ObservableObject {
         items.filter { $0.groupID == group.id }
     }
 
+    func lastPlayedItem(for profile: ProviderProfile) -> MediaItem? {
+        guard let record = savedProfiles.first(where: { $0.id == profile.id }),
+              let itemID = record.lastPlayedItemID else {
+            return nil
+        }
+
+        return record.items.first(where: { $0.id == itemID })
+    }
+
+    func lastSelectedGroup(for profile: ProviderProfile) -> MediaGroup? {
+        guard let record = savedProfiles.first(where: { $0.id == profile.id }),
+              let groupID = record.lastSelectedGroupID else {
+            return nil
+        }
+
+        return record.groups.first(where: { $0.id == groupID })
+    }
+
     func isFavorite(_ item: MediaItem) -> Bool {
         favorites.contains(where: { favorite in
             favorite.id == item.id && favorite.providerID == item.providerID
@@ -161,6 +179,20 @@ final class RootViewModel: ObservableObject {
         recents.insert(item, at: 0)
         recents = Array(recents.prefix(12))
         persistence.saveRecents(recents)
+        markLastPlayed(item)
+    }
+
+    func recordGroupVisit(_ group: MediaGroup) {
+        guard let activeProfile else {
+            return
+        }
+
+        guard let index = savedProfiles.firstIndex(where: { $0.id == activeProfile.id }) else {
+            return
+        }
+
+        savedProfiles[index].lastSelectedGroupID = group.id
+        persistence.saveProfiles(savedProfiles)
     }
 
     private func buildProfile() throws -> ProviderProfile {
@@ -250,7 +282,31 @@ final class RootViewModel: ObservableObject {
                 groups: parsed.groups,
                 items: items,
                 lastUpdatedAt: .now,
-                lastOpenedAt: .now
+                lastOpenedAt: .now,
+                lastSelectedGroupID: matchingSavedProfile(
+                    kind: profile.kind,
+                    remoteURL: profile.playlistSource?.remoteURL,
+                    rawText: profile.playlistSource?.rawText,
+                    host: profile.xtreamCredentials?.host,
+                    username: profile.xtreamCredentials?.username,
+                    password: profile.xtreamCredentials?.password
+                )?.lastSelectedGroupID,
+                lastPlayedItemID: matchingSavedProfile(
+                    kind: profile.kind,
+                    remoteURL: profile.playlistSource?.remoteURL,
+                    rawText: profile.playlistSource?.rawText,
+                    host: profile.xtreamCredentials?.host,
+                    username: profile.xtreamCredentials?.username,
+                    password: profile.xtreamCredentials?.password
+                )?.lastPlayedItemID,
+                lastPlayedItemTitle: matchingSavedProfile(
+                    kind: profile.kind,
+                    remoteURL: profile.playlistSource?.remoteURL,
+                    rawText: profile.playlistSource?.rawText,
+                    host: profile.xtreamCredentials?.host,
+                    username: profile.xtreamCredentials?.username,
+                    password: profile.xtreamCredentials?.password
+                )?.lastPlayedItemTitle
             )
         )
         populateInputs(from: profile)
@@ -398,6 +454,17 @@ final class RootViewModel: ObservableObject {
 
         persistence.saveFavorites(favorites)
         persistence.saveRecents(recents)
+        persistence.saveProfiles(savedProfiles)
+    }
+
+    private func markLastPlayed(_ item: MediaItem) {
+        guard let index = savedProfiles.firstIndex(where: { $0.id == item.providerID }) else {
+            return
+        }
+
+        savedProfiles[index].lastPlayedItemID = item.id
+        savedProfiles[index].lastPlayedItemTitle = item.title
+        savedProfiles[index].lastSelectedGroupID = item.groupID
         persistence.saveProfiles(savedProfiles)
     }
 

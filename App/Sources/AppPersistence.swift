@@ -7,6 +7,9 @@ struct SavedProfileRecord: Identifiable, Codable, Equatable {
     var items: [MediaItem]
     var lastUpdatedAt: Date?
     var lastOpenedAt: Date?
+    var lastSelectedGroupID: String?
+    var lastPlayedItemID: String?
+    var lastPlayedItemTitle: String?
 
     var id: UUID { profile.id }
 }

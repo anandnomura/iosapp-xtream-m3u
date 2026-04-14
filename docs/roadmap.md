@@ -34,6 +34,7 @@ These are the items being grouped together for the next round of testing:
 - `[~]` SwiftData container groundwork for long-term profile/favorites/recents migration
 - `[~]` Audio and subtitle track controls in fullscreen player
 - `[~]` XMLTV / EPG parsing groundwork in the shared package
+- `[~]` Channel-to-EPG matching and now/next groundwork in the shared package
 
 ### How To Test Current Batch
 
@@ -138,6 +139,11 @@ These are the items being grouped together for the next round of testing:
 - Confirm the repo still builds after the XMLTV parser/models are added.
 - Later app work can use this parser for now/next and guide UI.
 
+18. EPG matching groundwork
+- This is also package-level groundwork for now.
+- Confirm the repo still builds after the matcher/models are added.
+- Later app work can use this to show now/next against loaded channels.
+
 ## Phase 1: Stable Live TV MVP
 
 - `[x]` M3U URL loading
@@ -188,7 +194,7 @@ These are the items being grouped together for the next round of testing:
 ## Phase 5: TV Guide and Library
 
 - `[~]` XMLTV / EPG ingestion
-- `[ ]` Now / next metadata
+- `[~]` Now / next metadata
 - `[ ]` Live guide screen
 - `[ ]` Movies browsing
 - `[ ]` Series browsing

@@ -240,3 +240,17 @@ public struct ParsedEPG: Codable, Equatable, Hashable, Sendable {
         self.programmes = programmes
     }
 }
+
+public struct ChannelNowNext: Codable, Equatable, Hashable, Sendable {
+    public var mediaItemID: String
+    public var channelID: String
+    public var current: EPGProgramme?
+    public var next: EPGProgramme?
+
+    public init(mediaItemID: String, channelID: String, current: EPGProgramme?, next: EPGProgramme?) {
+        self.mediaItemID = mediaItemID
+        self.channelID = channelID
+        self.current = current
+        self.next = next
+    }
+}

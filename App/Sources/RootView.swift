@@ -137,12 +137,13 @@ struct RootView: View {
                                     playlist: [item],
                                     initialIndex: 0,
                                     groupName: item.groupID ?? "Favorites",
+                                    nowNextForItem: viewModel.nowNext,
                                     isFavorite: viewModel.isFavorite,
                                     onToggleFavorite: viewModel.toggleFavorite,
                                     onOpenItem: viewModel.registerRecent
                                 )
                             } label: {
-                                MediaShortcutCard(item: item, accent: AppPalette.gold)
+                                MediaShortcutCard(item: item, accent: AppPalette.gold, nowNext: viewModel.nowNext(for: item))
                             }
                             .buttonStyle(.plain)
                         }
@@ -170,6 +171,7 @@ struct RootView: View {
                             playlist: viewModel.favorites,
                             initialIndex: viewModel.favorites.firstIndex(of: item) ?? 0,
                             groupName: "Favorites",
+                            nowNextForItem: viewModel.nowNext,
                             isFavorite: viewModel.isFavorite,
                             onToggleFavorite: viewModel.toggleFavorite,
                             onOpenItem: viewModel.registerRecent
@@ -177,6 +179,7 @@ struct RootView: View {
                     } label: {
                         ChannelRow(
                             item: item,
+                            nowNext: viewModel.nowNext(for: item),
                             isFavorite: viewModel.isFavorite(item),
                             onToggleFavorite: { viewModel.toggleFavorite(item) }
                         )
@@ -204,12 +207,13 @@ struct RootView: View {
                                     playlist: [item],
                                     initialIndex: 0,
                                     groupName: item.groupID ?? "Recent",
+                                    nowNextForItem: viewModel.nowNext,
                                     isFavorite: viewModel.isFavorite,
                                     onToggleFavorite: viewModel.toggleFavorite,
                                     onOpenItem: viewModel.registerRecent
                                 )
                             } label: {
-                                MediaShortcutCard(item: item, accent: AppPalette.sky)
+                                MediaShortcutCard(item: item, accent: AppPalette.sky, nowNext: viewModel.nowNext(for: item))
                             }
                             .buttonStyle(.plain)
                         }
@@ -237,6 +241,7 @@ struct RootView: View {
                             playlist: viewModel.recents,
                             initialIndex: viewModel.recents.firstIndex(of: item) ?? 0,
                             groupName: "Recents",
+                            nowNextForItem: viewModel.nowNext,
                             isFavorite: viewModel.isFavorite,
                             onToggleFavorite: viewModel.toggleFavorite,
                             onOpenItem: viewModel.registerRecent
@@ -244,6 +249,7 @@ struct RootView: View {
                     } label: {
                         ChannelRow(
                             item: item,
+                            nowNext: viewModel.nowNext(for: item),
                             isFavorite: viewModel.isFavorite(item),
                             onToggleFavorite: { viewModel.toggleFavorite(item) }
                         )
@@ -318,6 +324,12 @@ struct RootView: View {
                             .keyboardType(.URL)
                             .autocorrectionDisabled()
                     }
+                    sourceField("Guide URL (Optional)") {
+                        TextField("https://example.com/guide.xml", text: $viewModel.guideURLString)
+                            .textInputAutocapitalization(.never)
+                            .keyboardType(.URL)
+                            .autocorrectionDisabled()
+                    }
 
                 case .m3uText:
                     VStack(alignment: .leading, spacing: 8) {
@@ -332,6 +344,12 @@ struct RootView: View {
                             .padding(12)
                             .background(AppPalette.fieldFill, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                             .foregroundStyle(.white)
+                    }
+                    sourceField("Guide URL (Optional)") {
+                        TextField("https://example.com/guide.xml", text: $viewModel.guideURLString)
+                            .textInputAutocapitalization(.never)
+                            .keyboardType(.URL)
+                            .autocorrectionDisabled()
                     }
 
                 case .xtream:
@@ -351,6 +369,12 @@ struct RootView: View {
                     sourceField("Password") {
                         SecureField("Password", text: $viewModel.xtreamPassword)
                             .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                    }
+                    sourceField("Guide URL (Optional)") {
+                        TextField("https://example.com/guide.xml", text: $viewModel.guideURLString)
+                            .textInputAutocapitalization(.never)
+                            .keyboardType(.URL)
                             .autocorrectionDisabled()
                     }
                 }
@@ -443,6 +467,7 @@ struct RootView: View {
                             playlist: filteredSearchItems,
                             initialIndex: filteredSearchItems.firstIndex(of: item) ?? 0,
                             groupName: "Search Results",
+                            nowNextForItem: viewModel.nowNext,
                             isFavorite: viewModel.isFavorite,
                             onToggleFavorite: viewModel.toggleFavorite,
                             onOpenItem: viewModel.registerRecent
@@ -450,6 +475,7 @@ struct RootView: View {
                     } label: {
                         ChannelRow(
                             item: item,
+                            nowNext: viewModel.nowNext(for: item),
                             isFavorite: viewModel.isFavorite(item),
                             onToggleFavorite: { viewModel.toggleFavorite(item) }
                         )
@@ -517,12 +543,27 @@ struct RootView: View {
                         .foregroundStyle(AppPalette.secondaryText)
                 }
 
+                if let guideURL = profile.xmltvSource?.remoteURL?.absoluteString {
+                    Text("Guide: \(guideURL)")
+                        .font(.caption)
+                        .foregroundStyle(AppPalette.secondaryText)
+                        .lineLimit(2)
+                        .textSelection(.enabled)
+                }
+
+                if let guideStatusMessage = viewModel.guideStatusMessage {
+                    Text(guideStatusMessage)
+                        .font(.caption)
+                        .foregroundStyle(guideStatusMessage.contains("unavailable") ? AppPalette.gold : AppPalette.secondaryText)
+                }
+
                 if let resumeItem = viewModel.lastPlayedItem(for: profile) {
                     NavigationLink {
                         ChannelDetailView(
                             playlist: [resumeItem],
                             initialIndex: 0,
                             groupName: resumeItem.groupID ?? "Resume",
+                            nowNextForItem: viewModel.nowNext,
                             isFavorite: viewModel.isFavorite,
                             onToggleFavorite: viewModel.toggleFavorite,
                             onOpenItem: viewModel.registerRecent
@@ -541,6 +582,7 @@ struct RootView: View {
                         ChannelListView(
                             group: lastGroup,
                             items: viewModel.items(in: lastGroup),
+                            nowNextForItem: viewModel.nowNext,
                             isFavorite: viewModel.isFavorite,
                             onToggleFavorite: viewModel.toggleFavorite,
                             onOpenItem: viewModel.registerRecent,
@@ -663,6 +705,7 @@ struct RootView: View {
                             ChannelListView(
                                 group: group,
                                 items: viewModel.items(in: group),
+                                nowNextForItem: viewModel.nowNext,
                                 isFavorite: viewModel.isFavorite,
                                 onToggleFavorite: viewModel.toggleFavorite,
                                 onOpenItem: viewModel.registerRecent,
@@ -730,6 +773,7 @@ struct RootView: View {
 private struct ChannelListView: View {
     let group: MediaGroup
     let items: [MediaItem]
+    let nowNextForItem: (MediaItem) -> ChannelNowNext?
     let isFavorite: (MediaItem) -> Bool
     let onToggleFavorite: (MediaItem) -> Void
     let onOpenItem: (MediaItem) -> Void
@@ -750,6 +794,7 @@ private struct ChannelListView: View {
                 } label: {
                     ChannelRow(
                         item: item,
+                        nowNext: nowNextForItem(item),
                         isFavorite: isFavorite(item),
                         onToggleFavorite: { onToggleFavorite(item) }
                     )
@@ -773,6 +818,7 @@ private struct ChannelListView: View {
                 playlist: filteredItems,
                 initialIndex: route.index,
                 groupName: group.name,
+                nowNextForItem: nowNextForItem,
                 isFavorite: isFavorite,
                 onToggleFavorite: onToggleFavorite,
                 onOpenItem: onOpenItem
@@ -841,6 +887,7 @@ private struct ChannelDetailView: View {
     let playlist: [MediaItem]
     let initialIndex: Int
     let groupName: String
+    let nowNextForItem: (MediaItem) -> ChannelNowNext?
     let isFavorite: (MediaItem) -> Bool
     let onToggleFavorite: (MediaItem) -> Void
     let onOpenItem: (MediaItem) -> Void
@@ -852,6 +899,7 @@ private struct ChannelDetailView: View {
         playlist: [MediaItem],
         initialIndex: Int,
         groupName: String,
+        nowNextForItem: @escaping (MediaItem) -> ChannelNowNext?,
         isFavorite: @escaping (MediaItem) -> Bool,
         onToggleFavorite: @escaping (MediaItem) -> Void,
         onOpenItem: @escaping (MediaItem) -> Void
@@ -859,6 +907,7 @@ private struct ChannelDetailView: View {
         self.playlist = playlist
         self.initialIndex = initialIndex
         self.groupName = groupName
+        self.nowNextForItem = nowNextForItem
         self.isFavorite = isFavorite
         self.onToggleFavorite = onToggleFavorite
         self.onOpenItem = onOpenItem
@@ -869,6 +918,7 @@ private struct ChannelDetailView: View {
         FullScreenPlayerView(
             title: currentItem.title,
             source: sourceOrNil,
+            nowNext: nowNextForItem(currentItem),
             hasPreviousChannel: currentIndex > 0,
             hasNextChannel: currentIndex < playlist.count - 1,
             isFavorite: isFavorite(currentItem),
@@ -924,6 +974,7 @@ private struct ChannelDetailView: View {
 private struct FullScreenPlayerView: View {
     let title: String
     let source: PlaybackSource?
+    let nowNext: ChannelNowNext?
     let hasPreviousChannel: Bool
     let hasNextChannel: Bool
     let isFavorite: Bool
@@ -1034,6 +1085,17 @@ private struct FullScreenPlayerView: View {
                 Text(playerController.stateDescription)
                     .font(.caption)
                     .foregroundStyle(.white.opacity(0.8))
+                if let current = nowNext?.current {
+                    Text("Now: \(current.title)")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(AppPalette.mint)
+                        .lineLimit(1)
+                } else if let next = nowNext?.next {
+                    Text("Next: \(next.title)")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(AppPalette.sky)
+                        .lineLimit(1)
+                }
             }
 
             Button {
@@ -1105,6 +1167,10 @@ private struct FullScreenPlayerView: View {
                 Text(probeSummary)
                     .font(.caption)
                     .foregroundStyle(.white.opacity(0.8))
+            }
+
+            if let nowNext {
+                nowNextStrip(nowNext)
             }
 
             if !playerController.audioTrackOptions.isEmpty || !playerController.subtitleTrackOptions.isEmpty {
@@ -1208,6 +1274,40 @@ private struct FullScreenPlayerView: View {
                 .font(.caption)
                 .foregroundStyle(.white)
                 .textSelection(.enabled)
+        }
+    }
+
+    private func nowNextStrip(_ nowNext: ChannelNowNext) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let current = nowNext.current {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("NOW")
+                        .font(.caption2.weight(.heavy))
+                        .foregroundStyle(AppPalette.mint)
+                    Text(current.title)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                    if let subtitle = current.subtitle ?? current.summary {
+                        Text(subtitle)
+                            .font(.caption2)
+                            .foregroundStyle(.white.opacity(0.78))
+                            .lineLimit(2)
+                    }
+                }
+            }
+
+            if let next = nowNext.next {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("NEXT")
+                        .font(.caption2.weight(.heavy))
+                        .foregroundStyle(AppPalette.sky)
+                    Text(next.title)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                }
+            }
         }
     }
 
@@ -1445,6 +1545,7 @@ private struct GroupRow: View {
 
 private struct ChannelRow: View {
     let item: MediaItem
+    let nowNext: ChannelNowNext?
     let isFavorite: Bool
     let onToggleFavorite: () -> Void
 
@@ -1476,6 +1577,18 @@ private struct ChannelRow: View {
                             .foregroundStyle(AppPalette.secondaryText)
                     }
                 }
+
+                if let current = nowNext?.current {
+                    Text("Now: \(current.title)")
+                        .font(.caption)
+                        .foregroundStyle(AppPalette.sky)
+                        .lineLimit(1)
+                } else if let next = nowNext?.next {
+                    Text("Next: \(next.title)")
+                        .font(.caption)
+                        .foregroundStyle(AppPalette.secondaryText)
+                        .lineLimit(1)
+                }
             }
 
             Spacer()
@@ -1498,6 +1611,7 @@ private struct ChannelRow: View {
 private struct MediaShortcutCard: View {
     let item: MediaItem
     let accent: Color
+    let nowNext: ChannelNowNext?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -1536,6 +1650,13 @@ private struct MediaShortcutCard: View {
                     .font(.caption)
                     .foregroundStyle(AppPalette.secondaryText)
                     .lineLimit(1)
+
+                if let current = nowNext?.current {
+                    Text("Now: \(current.title)")
+                        .font(.caption)
+                        .foregroundStyle(accent.opacity(0.95))
+                        .lineLimit(1)
+                }
             }
         }
         .padding(18)

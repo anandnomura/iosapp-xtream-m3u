@@ -35,6 +35,8 @@ These are the items being grouped together for the next round of testing:
 - `[~]` Audio and subtitle track controls in fullscreen player
 - `[~]` XMLTV / EPG parsing groundwork in the shared package
 - `[~]` Channel-to-EPG matching and now/next groundwork in the shared package
+- `[~]` Optional XMLTV guide URL on saved profiles
+- `[~]` App-level now/next display on channel rows, shortcuts, and the player
 
 ### How To Test Current Batch
 
@@ -144,6 +146,14 @@ These are the items being grouped together for the next round of testing:
 - Confirm the repo still builds after the matcher/models are added.
 - Later app work can use this to show now/next against loaded channels.
 
+19. Optional guide URL and now/next UI
+- Add a guide URL to a source before loading channels.
+- Confirm the loaded source card shows the guide URL and a guide status message.
+- If the XMLTV data matches channels, confirm channel rows show `Now` or `Next` program text.
+- Confirm favorites and recents shortcuts also show current programme text when guide data matches.
+- Open fullscreen player for a matched channel and confirm `Now` / `Next` appears in the overlay.
+- Confirm a bad or missing guide does not block playlist loading or playback.
+
 ## Phase 1: Stable Live TV MVP
 
 - `[x]` M3U URL loading
@@ -195,6 +205,7 @@ These are the items being grouped together for the next round of testing:
 
 - `[~]` XMLTV / EPG ingestion
 - `[~]` Now / next metadata
+- `[~]` Optional guide URL input on profiles
 - `[ ]` Live guide screen
 - `[ ]` Movies browsing
 - `[ ]` Series browsing

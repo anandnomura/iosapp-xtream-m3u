@@ -16,6 +16,7 @@ final class RootViewModel: ObservableObject {
     @Published var sourceMode: SourceMode = .m3uURL
     @Published var profileName = "My Playlist"
     @Published var m3uURLString = ""
+    @Published var guideURLString = ""
     @Published var rawM3UText = ""
     @Published var xtreamHostString = ""
     @Published var xtreamUsername = ""
@@ -29,21 +30,29 @@ final class RootViewModel: ObservableObject {
     @Published private(set) var items: [MediaItem] = []
     @Published private(set) var lastUpdatedAt: Date?
     @Published private(set) var statusMessage = "Choose a source and load your channels."
+    @Published private(set) var guideStatusMessage: String?
     @Published private(set) var isLoading = false
     @Published var errorMessage: String?
 
     private let m3uLoader: M3UPlaylistLoader
     private let xtreamLoader: XtreamLivePlaylistLoader
+    private let guideLoader: XMLTVGuideLoader
+    private let epgMatcher: EPGMatcher
     private let persistence: AppPersistence
+    private var nowNextByProfileID: [UUID: [String: ChannelNowNext]] = [:]
     private var cancellables: Set<AnyCancellable> = []
 
     init(
         m3uLoader: M3UPlaylistLoader = M3UPlaylistLoader(),
         xtreamLoader: XtreamLivePlaylistLoader = XtreamLivePlaylistLoader(),
+        guideLoader: XMLTVGuideLoader = XMLTVGuideLoader(),
+        epgMatcher: EPGMatcher = EPGMatcher(),
         persistence: AppPersistence = .shared
     ) {
         self.m3uLoader = m3uLoader
         self.xtreamLoader = xtreamLoader
+        self.guideLoader = guideLoader
+        self.epgMatcher = epgMatcher
         self.persistence = persistence
         restorePersistedState()
         bindDraftPersistence()
@@ -78,6 +87,7 @@ final class RootViewModel: ObservableObject {
             }
 
             applyLoadedPlaylist(parsed, for: profile, markAsActive: true)
+            await reloadGuideIfAvailable(for: profile, items: parsed.items)
             statusMessage = "Loaded \(parsed.items.count) channels across \(parsed.groups.count) groups."
         } catch {
             errorMessage = friendlyMessage(for: error)
@@ -109,6 +119,16 @@ final class RootViewModel: ObservableObject {
         populateInputs(from: record.profile)
         markProfileOpened(record.profile.id)
         persistence.saveActiveProfileID(record.profile.id)
+
+        if let cached = nowNextByProfileID[record.id], !cached.isEmpty {
+            guideStatusMessage = "Guide matched \(cached.count) channels."
+        } else {
+            guideStatusMessage = nil
+        }
+
+        Task {
+            await reloadGuideIfAvailable(for: record.profile, items: record.items)
+        }
     }
 
     func deleteProfiles(at offsets: IndexSet) {
@@ -131,6 +151,10 @@ final class RootViewModel: ObservableObject {
 
     func items(in group: MediaGroup) -> [MediaItem] {
         items.filter { $0.groupID == group.id }
+    }
+
+    func nowNext(for item: MediaItem) -> ChannelNowNext? {
+        nowNextByProfileID[item.providerID]?[item.id]
     }
 
     func lastPlayedItem(for profile: ProviderProfile) -> MediaItem? {
@@ -211,13 +235,15 @@ final class RootViewModel: ObservableObject {
                 var updated = existing.profile
                 updated.name = finalName
                 updated.playlistSource = PlaylistSource(remoteURL: url)
+                updated.xmltvSource = parsedGuideSource()
                 return updated
             }
 
             return ProviderProfile(
                 name: finalName,
                 kind: .m3u,
-                playlistSource: PlaylistSource(remoteURL: url)
+                playlistSource: PlaylistSource(remoteURL: url),
+                xmltvSource: parsedGuideSource()
             )
 
         case .m3uText:
@@ -230,13 +256,15 @@ final class RootViewModel: ObservableObject {
                 var updated = existing.profile
                 updated.name = finalName
                 updated.playlistSource = PlaylistSource(rawText: text)
+                updated.xmltvSource = parsedGuideSource()
                 return updated
             }
 
             return ProviderProfile(
                 name: finalName,
                 kind: .m3u,
-                playlistSource: PlaylistSource(rawText: text)
+                playlistSource: PlaylistSource(rawText: text),
+                xmltvSource: parsedGuideSource()
             )
 
         case .xtream:
@@ -257,13 +285,15 @@ final class RootViewModel: ObservableObject {
                 var updated = existing.profile
                 updated.name = finalName
                 updated.xtreamCredentials = XtreamCredentials(host: host, username: username, password: password)
+                updated.xmltvSource = parsedGuideSource()
                 return updated
             }
 
             return ProviderProfile(
                 name: finalName,
                 kind: .xtream,
-                xtreamCredentials: XtreamCredentials(host: host, username: username, password: password)
+                xtreamCredentials: XtreamCredentials(host: host, username: username, password: password),
+                xmltvSource: parsedGuideSource()
             )
         }
     }
@@ -314,8 +344,8 @@ final class RootViewModel: ObservableObject {
     }
 
     private func bindDraftPersistence() {
-        Publishers.CombineLatest4($sourceMode, $profileName, $m3uURLString, $rawM3UText)
-            .combineLatest(Publishers.CombineLatest3($xtreamHostString, $xtreamUsername, $xtreamPassword))
+        Publishers.CombineLatest4($sourceMode, $profileName, $m3uURLString, $guideURLString)
+            .combineLatest(Publishers.CombineLatest4($rawM3UText, $xtreamHostString, $xtreamUsername, $xtreamPassword))
             .sink { [weak self] lhs, rhs in
                 guard let self else { return }
 
@@ -323,10 +353,11 @@ final class RootViewModel: ObservableObject {
                     sourceMode: lhs.0.rawValue,
                     profileName: lhs.1,
                     m3uURLString: lhs.2,
-                    rawM3UText: lhs.3,
-                    xtreamHostString: rhs.0,
-                    xtreamUsername: rhs.1,
-                    xtreamPassword: rhs.2
+                    guideURLString: lhs.3,
+                    rawM3UText: rhs.0,
+                    xtreamHostString: rhs.1,
+                    xtreamUsername: rhs.2,
+                    xtreamPassword: rhs.3
                 )
                 self.persistence.saveDraft(draft)
             }
@@ -342,6 +373,7 @@ final class RootViewModel: ObservableObject {
             sourceMode = SourceMode(rawValue: draft.sourceMode) ?? .m3uURL
             profileName = draft.profileName
             m3uURLString = draft.m3uURLString
+            guideURLString = draft.guideURLString
             rawM3UText = draft.rawM3UText
             xtreamHostString = draft.xtreamHostString
             xtreamUsername = draft.xtreamUsername
@@ -363,6 +395,7 @@ final class RootViewModel: ObservableObject {
         case .m3u:
             sourceMode = .m3uURL
             m3uURLString = profile.playlistSource?.remoteURL?.absoluteString ?? ""
+            guideURLString = profile.xmltvSource?.remoteURL?.absoluteString ?? profile.xmltvSource?.rawText ?? ""
             rawM3UText = profile.playlistSource?.rawText ?? ""
             if profile.playlistSource?.remoteURL == nil, !(profile.playlistSource?.rawText?.isEmpty ?? true) {
                 sourceMode = .m3uText
@@ -374,6 +407,7 @@ final class RootViewModel: ObservableObject {
         case .xtream:
             sourceMode = .xtream
             m3uURLString = ""
+            guideURLString = profile.xmltvSource?.remoteURL?.absoluteString ?? profile.xmltvSource?.rawText ?? ""
             rawM3UText = ""
             xtreamHostString = profile.xtreamCredentials?.host.absoluteString ?? ""
             xtreamUsername = profile.xtreamCredentials?.username ?? ""
@@ -500,5 +534,38 @@ final class RootViewModel: ObservableObject {
         }
 
         return error.localizedDescription
+    }
+
+    private func parsedGuideSource() -> PlaylistSource? {
+        let trimmed = guideURLString.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return nil
+        }
+
+        guard let url = URL(string: trimmed), ["http", "https"].contains(url.scheme?.lowercased() ?? "") else {
+            return nil
+        }
+
+        return PlaylistSource(remoteURL: url)
+    }
+
+    private func reloadGuideIfAvailable(for profile: ProviderProfile, items: [MediaItem]) async {
+        guard let guideSource = profile.xmltvSource else {
+            nowNextByProfileID[profile.id] = nil
+            guideStatusMessage = nil
+            return
+        }
+
+        do {
+            let parsedGuide = try await guideLoader.load(source: guideSource)
+            let matches = epgMatcher.nowNextMap(for: items, epg: parsedGuide)
+            nowNextByProfileID[profile.id] = matches
+            guideStatusMessage = matches.isEmpty
+                ? "Guide loaded but no channels matched yet."
+                : "Guide matched \(matches.count) channels."
+        } catch {
+            nowNextByProfileID[profile.id] = nil
+            guideStatusMessage = "Guide unavailable: \(friendlyMessage(for: error))"
+        }
     }
 }

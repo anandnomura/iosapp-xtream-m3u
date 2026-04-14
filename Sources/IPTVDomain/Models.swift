@@ -32,6 +32,7 @@ public struct ProviderProfile: Identifiable, Codable, Equatable, Hashable, Senda
     public var name: String
     public var kind: ProviderKind
     public var playlistSource: PlaylistSource?
+    public var xmltvSource: PlaylistSource?
     public var xtreamCredentials: XtreamCredentials?
     public var isEnabled: Bool
     public var createdAt: Date
@@ -41,6 +42,7 @@ public struct ProviderProfile: Identifiable, Codable, Equatable, Hashable, Senda
         name: String,
         kind: ProviderKind,
         playlistSource: PlaylistSource? = nil,
+        xmltvSource: PlaylistSource? = nil,
         xtreamCredentials: XtreamCredentials? = nil,
         isEnabled: Bool = true,
         createdAt: Date = .now
@@ -49,6 +51,7 @@ public struct ProviderProfile: Identifiable, Codable, Equatable, Hashable, Senda
         self.name = name
         self.kind = kind
         self.playlistSource = playlistSource
+        self.xmltvSource = xmltvSource
         self.xtreamCredentials = xtreamCredentials
         self.isEnabled = isEnabled
         self.createdAt = createdAt

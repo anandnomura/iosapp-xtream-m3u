@@ -18,10 +18,54 @@ struct SourceDraft: Codable, Equatable {
     var sourceMode: String
     var profileName: String
     var m3uURLString: String
+    var guideURLString: String
     var rawM3UText: String
     var xtreamHostString: String
     var xtreamUsername: String
     var xtreamPassword: String
+
+    init(
+        sourceMode: String,
+        profileName: String,
+        m3uURLString: String,
+        guideURLString: String = "",
+        rawM3UText: String,
+        xtreamHostString: String,
+        xtreamUsername: String,
+        xtreamPassword: String
+    ) {
+        self.sourceMode = sourceMode
+        self.profileName = profileName
+        self.m3uURLString = m3uURLString
+        self.guideURLString = guideURLString
+        self.rawM3UText = rawM3UText
+        self.xtreamHostString = xtreamHostString
+        self.xtreamUsername = xtreamUsername
+        self.xtreamPassword = xtreamPassword
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case sourceMode
+        case profileName
+        case m3uURLString
+        case guideURLString
+        case rawM3UText
+        case xtreamHostString
+        case xtreamUsername
+        case xtreamPassword
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        sourceMode = try container.decode(String.self, forKey: .sourceMode)
+        profileName = try container.decode(String.self, forKey: .profileName)
+        m3uURLString = try container.decode(String.self, forKey: .m3uURLString)
+        guideURLString = try container.decodeIfPresent(String.self, forKey: .guideURLString) ?? ""
+        rawM3UText = try container.decode(String.self, forKey: .rawM3UText)
+        xtreamHostString = try container.decode(String.self, forKey: .xtreamHostString)
+        xtreamUsername = try container.decode(String.self, forKey: .xtreamUsername)
+        xtreamPassword = try container.decode(String.self, forKey: .xtreamPassword)
+    }
 }
 
 @MainActor

@@ -244,15 +244,66 @@ final class RootViewModel: ObservableObject {
         persistence.saveProfiles(savedProfiles)
     }
 
+    func pasteIntoM3UURL(_ rawValue: String) {
+        let sanitized = sanitizedPastedText(rawValue)
+        guard !sanitized.isEmpty else {
+            return
+        }
+
+        if let credentials = parseXtreamCredentials(from: sanitized) {
+            sourceMode = .xtream
+            xtreamHostString = credentials.host.absoluteString
+            xtreamUsername = credentials.username
+            xtreamPassword = credentials.password
+            m3uURLString = ""
+            errorMessage = nil
+            statusMessage = "Parsed the pasted Xtream URL into host, username, and password."
+            return
+        }
+
+        guard let url = normalizedRemoteURL(from: sanitized) else {
+            errorMessage = "The pasted playlist URL is invalid."
+            return
+        }
+
+        sourceMode = .m3u
+        m3uURLString = url.absoluteString
+        errorMessage = nil
+    }
+
+    func pasteIntoGuideURL(_ rawValue: String) {
+        let sanitized = sanitizedPastedText(rawValue)
+        guard !sanitized.isEmpty else {
+            return
+        }
+
+        if let url = normalizedRemoteURL(from: sanitized) {
+            guideURLString = url.absoluteString
+            errorMessage = nil
+        } else {
+            guideURLString = sanitized
+        }
+    }
+
+    func pasteIntoXtreamHost(_ rawValue: String) {
+        applyXtreamPaste(rawValue, fallback: { xtreamHostString = $0 })
+    }
+
+    func pasteIntoXtreamUsername(_ rawValue: String) {
+        applyXtreamPaste(rawValue, fallback: { xtreamUsername = $0 })
+    }
+
+    func pasteIntoXtreamPassword(_ rawValue: String) {
+        applyXtreamPaste(rawValue, fallback: { xtreamPassword = $0 })
+    }
+
     private func buildProfile() throws -> ProviderProfile {
         let trimmedName = profileName.trimmingCharacters(in: .whitespacesAndNewlines)
         let finalName = trimmedName.isEmpty ? "My Playlist" : trimmedName
 
         switch sourceMode {
         case .m3u:
-            guard let url = URL(string: m3uURLString.trimmingCharacters(in: .whitespacesAndNewlines)),
-                  ["http", "https"].contains(url.scheme?.lowercased() ?? "")
-            else {
+            guard let url = normalizedRemoteURL(from: m3uURLString) else {
                 throw PlaylistLoaderError.invalidURL
             }
 
@@ -272,23 +323,14 @@ final class RootViewModel: ObservableObject {
             )
 
         case .xtream:
-            let hostText = xtreamHostString.trimmingCharacters(in: .whitespacesAndNewlines)
-            let username = xtreamUsername.trimmingCharacters(in: .whitespacesAndNewlines)
-            let password = xtreamPassword.trimmingCharacters(in: .whitespacesAndNewlines)
-
-            guard !hostText.isEmpty, !username.isEmpty, !password.isEmpty else {
+            guard let credentials = resolvedXtreamCredentials() else {
                 throw PlaylistLoaderError.emptyCredentials
             }
 
-            let normalizedHost = hostText.contains("://") ? hostText : "https://\(hostText)"
-            guard let host = URL(string: normalizedHost) else {
-                throw PlaylistLoaderError.invalidURL
-            }
-
-            if let existing = matchingSavedProfile(kind: .xtream, remoteURL: nil, rawText: nil, host: host, username: username, password: password) {
+            if let existing = matchingSavedProfile(kind: .xtream, remoteURL: nil, rawText: nil, host: credentials.host, username: credentials.username, password: credentials.password) {
                 var updated = existing.profile
                 updated.name = finalName
-                updated.xtreamCredentials = XtreamCredentials(host: host, username: username, password: password)
+                updated.xtreamCredentials = credentials
                 updated.xmltvSource = parsedGuideSource()
                 return updated
             }
@@ -297,7 +339,7 @@ final class RootViewModel: ObservableObject {
                 name: finalName,
                 kind: .xtream,
                 xmltvSource: parsedGuideSource(),
-                xtreamCredentials: XtreamCredentials(host: host, username: username, password: password)
+                xtreamCredentials: credentials
             )
         }
     }
@@ -566,13 +608,136 @@ final class RootViewModel: ObservableObject {
         return error.localizedDescription
     }
 
-    private func parsedGuideSource() -> PlaylistSource? {
-        let trimmed = guideURLString.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
+    private func applyXtreamPaste(_ rawValue: String, fallback: (String) -> Void) {
+        let sanitized = sanitizedPastedText(rawValue)
+        guard !sanitized.isEmpty else {
+            return
+        }
+
+        sourceMode = .xtream
+
+        if let credentials = parseXtreamCredentials(from: sanitized) {
+            xtreamHostString = credentials.host.absoluteString
+            xtreamUsername = credentials.username
+            xtreamPassword = credentials.password
+            errorMessage = nil
+            statusMessage = "Parsed the pasted Xtream URL into host, username, and password."
+            return
+        }
+
+        if let hostURL = normalizedXtreamHostURL(from: sanitized) {
+            xtreamHostString = hostURL.absoluteString
+            errorMessage = nil
+            return
+        }
+
+        fallback(sanitized)
+    }
+
+    private func resolvedXtreamCredentials() -> XtreamCredentials? {
+        let hostText = sanitizedPastedText(xtreamHostString)
+        let usernameText = sanitizedPastedText(xtreamUsername)
+        let passwordText = sanitizedPastedText(xtreamPassword)
+
+        let parsedCredentials =
+            parseXtreamCredentials(from: hostText) ??
+            parseXtreamCredentials(from: usernameText) ??
+            parseXtreamCredentials(from: passwordText)
+
+        let host = parsedCredentials?.host ?? normalizedXtreamHostURL(from: hostText)
+        let username = usernameText.isEmpty ? (parsedCredentials?.username ?? "") : usernameText
+        let password = passwordText.isEmpty ? (parsedCredentials?.password ?? "") : passwordText
+
+        guard let host, !username.isEmpty, !password.isEmpty else {
             return nil
         }
 
-        guard let url = URL(string: trimmed), ["http", "https"].contains(url.scheme?.lowercased() ?? "") else {
+        return XtreamCredentials(host: host, username: username, password: password)
+    }
+
+    private func parseXtreamCredentials(from rawValue: String) -> XtreamCredentials? {
+        guard let url = normalizedRemoteURL(from: rawValue),
+              var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return nil
+        }
+
+        let queryItems = components.queryItems ?? []
+        let username = queryItems.first(where: { $0.name.caseInsensitiveCompare("username") == .orderedSame })?.value
+        let password = queryItems.first(where: { $0.name.caseInsensitiveCompare("password") == .orderedSame })?.value
+
+        guard let username, !username.isEmpty,
+              let password, !password.isEmpty else {
+            return nil
+        }
+
+        let lastComponent = URL(fileURLWithPath: components.path).lastPathComponent.lowercased()
+        if !["get.php", "player_api.php"].contains(lastComponent),
+           !queryItems.contains(where: { $0.name.caseInsensitiveCompare("action") == .orderedSame }) {
+            return nil
+        }
+
+        if ["get.php", "player_api.php"].contains(lastComponent) {
+            let basePath = (components.path as NSString).deletingLastPathComponent
+            components.path = basePath == "/" ? "" : basePath
+        }
+
+        components.query = nil
+        components.fragment = nil
+
+        guard let hostURL = components.url.flatMap({ normalizedXtreamHostURL(from: $0.absoluteString) }) else {
+            return nil
+        }
+
+        return XtreamCredentials(host: hostURL, username: username, password: password)
+    }
+
+    private func normalizedRemoteURL(from rawValue: String) -> URL? {
+        let sanitized = sanitizedPastedText(rawValue)
+        guard !sanitized.isEmpty,
+              let components = URLComponents(string: sanitized),
+              let scheme = components.scheme?.lowercased(),
+              ["http", "https"].contains(scheme) else {
+            return nil
+        }
+
+        return components.url
+    }
+
+    private func normalizedXtreamHostURL(from rawValue: String) -> URL? {
+        let sanitized = sanitizedPastedText(rawValue)
+        guard !sanitized.isEmpty else {
+            return nil
+        }
+
+        let candidate = sanitized.contains("://") ? sanitized : "https://\(sanitized)"
+        guard var components = URLComponents(string: candidate),
+              let scheme = components.scheme?.lowercased(),
+              ["http", "https"].contains(scheme),
+              components.host?.isEmpty == false else {
+            return nil
+        }
+
+        let lastComponent = URL(fileURLWithPath: components.path).lastPathComponent.lowercased()
+        if ["get.php", "player_api.php"].contains(lastComponent) {
+            let basePath = (components.path as NSString).deletingLastPathComponent
+            components.path = basePath == "/" ? "" : basePath
+        }
+
+        components.query = nil
+        components.fragment = nil
+        return components.url
+    }
+
+    private func sanitizedPastedText(_ rawValue: String) -> String {
+        rawValue
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+    }
+
+    private func parsedGuideSource() -> PlaylistSource? {
+        let trimmed = sanitizedPastedText(guideURLString)
+        guard !trimmed.isEmpty,
+              let url = normalizedRemoteURL(from: trimmed) else {
             return nil
         }
 

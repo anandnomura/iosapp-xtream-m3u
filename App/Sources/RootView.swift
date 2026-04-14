@@ -384,8 +384,6 @@ private struct ChannelDetailView: View {
     let initialIndex: Int
     let groupName: String
     @StateObject private var playerController = VLCPlayerController()
-    @State private var isPresentingFullscreen = false
-    @State private var hasAutoPresented = false
     @State private var currentIndex: Int
     @Environment(\.dismiss) private var dismiss
 
@@ -397,131 +395,22 @@ private struct ChannelDetailView: View {
     }
 
     var body: some View {
-        ZStack {
-            AppBackdrop()
-
-            List {
-                Section {
-                    VStack(alignment: .leading, spacing: 14) {
-                        Text(currentItem.title)
-                            .font(.system(size: 28, weight: .black, design: .rounded))
-                            .foregroundStyle(.white)
-
-                        HStack(spacing: 12) {
-                            StatCapsule(title: "Kind", value: currentItem.kind.rawValue.uppercased())
-                            StatCapsule(title: "ID", value: currentItem.id)
-                            StatCapsule(title: "Group", value: groupName)
-                        }
-                    }
-                    .cardStyle()
-                }
-
-                if let source = currentItem.source {
-                    Section {
-                        VStack(alignment: .leading, spacing: 14) {
-                            videoSurfaceCard
-
-                            HStack(spacing: 12) {
-                                Button {
-                                    Task {
-                                        await playerController.startPlayback(source: source)
-                                    }
-                                } label: {
-                                    playerButton("Play Stream", systemImage: "play.fill", fill: true)
-                                }
-
-                                Button {
-                                    playerController.stop()
-                                } label: {
-                                    playerButton("Stop", systemImage: "stop.fill", fill: false)
-                                }
-                            }
-
-                            Button {
-                                isPresentingFullscreen = true
-                            } label: {
-                                HStack {
-                                    Image(systemName: "arrow.up.left.and.arrow.down.right")
-                                    Text("Open Full Screen")
-                                        .fontWeight(.bold)
-                                    Spacer()
-                                }
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 14)
-                                .foregroundStyle(.white)
-                                .background(AppPalette.fieldFill, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                            }
-
-                            StatCapsule(title: "Player", value: playerController.stateDescription)
-
-                            if let probeSummary = playerController.probeSummary {
-                                Text(probeSummary)
-                                    .font(.footnote)
-                                    .foregroundStyle(AppPalette.secondaryText)
-                            }
-
-                            if let errorMessage = playerController.errorMessage {
-                                Text(errorMessage)
-                                    .font(.footnote)
-                                    .foregroundStyle(AppPalette.secondaryText)
-                            }
-                        }
-                        .cardStyle()
-                    } header: {
-                        Text("Playback")
-                    }
-
-                    Section {
-                        VStack(alignment: .leading, spacing: 12) {
-                            if let hint = source.containerHint {
-                                StatCapsule(title: "Container", value: hint.uppercased())
-                            }
-
-                            Text(source.url.absoluteString)
-                                .font(.footnote.monospaced())
-                                .foregroundStyle(AppPalette.secondaryText)
-                                .textSelection(.enabled)
-                        }
-                        .cardStyle()
-                    } header: {
-                        Text("Stream URL")
-                    }
-                }
-            }
-            .scrollContentBackground(.hidden)
-            .listStyle(.plain)
+        FullScreenPlayerView(
+            title: currentItem.title,
+            source: sourceOrNil,
+            hasPreviousChannel: currentIndex > 0,
+            hasNextChannel: currentIndex < playlist.count - 1,
+            playerController: playerController
+        ) {
+            dismissToBrowser()
+        } onPreviousChannel: {
+            moveChannel(by: -1)
+        } onNextChannel: {
+            moveChannel(by: 1)
         }
-        .navigationTitle(currentItem.title)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(.hidden, for: .navigationBar)
         .onDisappear {
             playerController.stop()
             playerController.detachOutput()
-        }
-        .task {
-            guard !playlist.isEmpty,
-                  !hasAutoPresented,
-                  currentItem.source != nil else {
-                return
-            }
-
-            hasAutoPresented = true
-            isPresentingFullscreen = true
-        }
-        .fullScreenCover(isPresented: $isPresentingFullscreen) {
-            FullScreenPlayerView(
-                title: currentItem.title,
-                source: sourceOrNil,
-                hasPreviousChannel: currentIndex > 0,
-                hasNextChannel: currentIndex < playlist.count - 1,
-                playerController: playerController
-            ) {
-                dismissToBrowser()
-            } onPreviousChannel: {
-                moveChannel(by: -1)
-            } onNextChannel: {
-                moveChannel(by: 1)
-            }
         }
     }
 
@@ -531,30 +420,6 @@ private struct ChannelDetailView: View {
 
     private var sourceOrNil: PlaybackSource? {
         currentItem.source
-    }
-
-    @ViewBuilder
-    private var videoSurfaceCard: some View {
-        VLCVideoSurfaceView(mediaPlayer: playerController.mediaPlayer)
-            .frame(minHeight: 230)
-            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-    }
-
-    private func playerButton(_ title: String, systemImage: String, fill: Bool) -> some View {
-        HStack {
-            Image(systemName: systemImage)
-            Text(title)
-                .fontWeight(.bold)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 14)
-        .foregroundStyle(fill ? .black.opacity(0.85) : .white)
-        .background(
-            fill ? AnyShapeStyle(
-                LinearGradient(colors: [AppPalette.mint, AppPalette.sky], startPoint: .leading, endPoint: .trailing)
-            ) : AnyShapeStyle(AppPalette.fieldFill),
-            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
-        )
     }
 
     private func moveChannel(by step: Int) {
